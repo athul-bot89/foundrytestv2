@@ -1,15 +1,26 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from azure.identity import ClientSecretCredential
 from azure.ai.projects import AIProjectClient
+from dotenv import load_dotenv
 
-app = Flask(__name__)
+load_dotenv()
+
+# In Docker, React build is copied to /app/static-build
+# Locally, fall back to ../chat-app/build
+STATIC_BUILD_DIR = os.environ.get(
+    "STATIC_BUILD_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "chat-app", "build"),
+)
+
+app = Flask(__name__, static_folder=os.path.join(STATIC_BUILD_DIR, "static"), static_url_path="/static")
 CORS(app)
 
 endpoint = os.environ["AZURE_ENDPOINT"]
 
-agent_name = "weather-agent"
-agent_version = "2"
+agent_name = os.environ["AGENT_NAME"]
+agent_version = os.environ["AGENT_VERSION"]
 
 credential = ClientSecretCredential(
     tenant_id=os.environ["AZURE_TENANT_ID"],
@@ -54,5 +65,14 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    """Serve React build - static files or index.html for client-side routing."""
+    if path and os.path.exists(os.path.join(STATIC_BUILD_DIR, path)):
+        return send_from_directory(STATIC_BUILD_DIR, path)
+    return send_from_directory(STATIC_BUILD_DIR, "index.html")
+
+
 if __name__ == "__main__":
-    app.run(port=3001, debug=True)
+    app.run(host="0.0.0.0", port=3000, debug=True)

@@ -1,0 +1,9 @@
+node_modules
+chat-app/node_modules
+pythonbackend/__pycache__
+pythonbackend/venv
+.git
+.env
+*.pyc
+__pycache__
+.vscode
