@@ -52,7 +52,7 @@ function Chat() {
   return (
     <div className="chat-container">
       <div className="chat-header">
-        <span>Weather Agent Chat</span>
+        <span>Agent Chat</span>
         <button className="new-user-btn" onClick={handleNewUser}>New User</button>
       </div>
       <div className="chat-messages">
