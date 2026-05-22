@@ -9,7 +9,7 @@ __pycache__/
 *.so
 venv/
 env/
-.env/
+.env/docker run -p 3000:3000 ghcr.io/athul-bot89/foundrytestv2:latest
 .venv/
 pythonbackend/venv/
 pythonbackend/.env
