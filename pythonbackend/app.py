@@ -17,21 +17,30 @@ STATIC_BUILD_DIR = os.environ.get(
 app = Flask(__name__, static_folder=os.path.join(STATIC_BUILD_DIR, "static"), static_url_path="/static")
 CORS(app)
 
-endpoint = os.environ["AZURE_ENDPOINT"]
+endpoint = os.environ.get("AZURE_ENDPOINT")
+agent_name = os.environ.get("AGENT_NAME")
+agent_version = os.environ.get("AGENT_VERSION")
 
-agent_name = os.environ["AGENT_NAME"]
-agent_version = os.environ["AGENT_VERSION"]
+project_client = None
 
-credential = ClientSecretCredential(
-    tenant_id=os.environ["AZURE_TENANT_ID"],
-    client_id=os.environ["AZURE_CLIENT_ID"],
-    client_secret=os.environ["AZURE_CLIENT_SECRET"],
-)
+def _get_project_client():
+    global project_client
+    if project_client is None:
+        credential = ClientSecretCredential(
+            tenant_id=os.environ["AZURE_TENANT_ID"],
+            client_id=os.environ["AZURE_CLIENT_ID"],
+            client_secret=os.environ["AZURE_CLIENT_SECRET"],
+        )
+        project_client = AIProjectClient(
+            endpoint=endpoint,
+            credential=credential,
+        )
+    return project_client
 
-project_client = AIProjectClient(
-    endpoint=endpoint,
-    credential=credential,
-)
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -39,7 +48,7 @@ def chat():
         data = request.get_json()
         messages = data.get("messages", [])
         user_id = data.get("userId", "anonymous")
-        openai_client = project_client.get_openai_client()
+        openai_client = _get_project_client().get_openai_client()
 
 
         print(user_id, messages)
