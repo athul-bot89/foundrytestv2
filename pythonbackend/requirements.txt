@@ -1,0 +1,5 @@
+flask
+flask-cors
+azure-identity
+azure-ai-projects
+openai
