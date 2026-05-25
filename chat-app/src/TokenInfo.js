@@ -1,75 +1,46 @@
 import React, { useState, useEffect } from "react";
-import { PublicClientApplication } from "@azure/msal-browser";
 
-const CLIENT_ID = "YOUR_AAD_APP_CLIENT_ID"; // Replace with your App Registration client ID
-const TENANT_ID = "YOUR_TENANT_ID"; // Replace with your Azure AD tenant ID
-const SCOPES = ["User.Read"];
-
-const msalConfig = {
-  auth: {
-    clientId: CLIENT_ID,
-    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-    redirectUri: window.location.origin,
-  },
-};
-
-const msalInstance = new PublicClientApplication(msalConfig);
+// Allowed parent origins that can send tokens via postMessage
+const ALLOWED_ORIGINS = [
+  "https://yourtenant.sharepoint.com",       // Replace with your SharePoint tenant
+  "https://yourtenant-admin.sharepoint.com",
+];
 
 function TokenInfo() {
   const [token, setToken] = useState(null);
-  const [accountInfo, setAccountInfo] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [userInfo, setUserInfo] = useState(null);
+  const [waiting, setWaiting] = useState(true);
 
   useEffect(() => {
-    async function acquireToken() {
-      try {
-        await msalInstance.initialize();
-
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-          try {
-            const silentResp = await msalInstance.acquireTokenSilent({
-              scopes: SCOPES,
-              account: accounts[0],
-            });
-            setToken(silentResp.accessToken);
-            setAccountInfo(silentResp.account);
-          } catch {
-            const popupResp = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
-            setToken(popupResp.accessToken);
-            setAccountInfo(popupResp.account);
-          }
-        } else {
-          const loginResp = await msalInstance.loginPopup({ scopes: SCOPES });
-          setToken(loginResp.accessToken);
-          setAccountInfo(loginResp.account);
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+    function handleMessage(event) {
+      // Validate origin
+      if (!ALLOWED_ORIGINS.some((o) => event.origin.startsWith(o))) return;
+      if (event.data && event.data.type === "AUTH_TOKEN") {
+        setToken(event.data.token);
+        setUserInfo(event.data.user || null);
+        setWaiting(false);
       }
     }
 
-    acquireToken();
+    window.addEventListener("message", handleMessage);
+
+    // Ask parent for token on load
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "REQUEST_TOKEN" }, "*");
+    }
+
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  if (loading) {
-    return <div className="token-info">Acquiring token...</div>;
-  }
-
-  if (error) {
-    return <div className="token-info token-error">Error: {error}</div>;
+  if (waiting) {
+    return <div className="token-info">Waiting for token from SharePoint...</div>;
   }
 
   return (
     <div className="token-info">
-      {accountInfo && (
+      {userInfo && (
         <div className="token-details">
-          <strong>User:</strong> {accountInfo.name} ({accountInfo.username})
-          <br />
-          <strong>Tenant:</strong> {accountInfo.tenantId}
+          <strong>User:</strong> {userInfo.name} ({userInfo.email})
         </div>
       )}
       {token && (
