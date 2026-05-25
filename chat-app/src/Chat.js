@@ -35,7 +35,7 @@ function parseCitations(text) {
  * with a collapsible "References" section at the bottom listing each source.
  */
 function MessageContent({ content, role }) {
-  const [refsExpanded, setRefsExpanded] = useState(true);
+  const [refsExpanded, setRefsExpanded] = useState(false);
 
   if (role === "user" || role === "error") {
     if (role === "error") return <span className="error-text">{content}</span>;
@@ -257,11 +257,11 @@ function Chat() {
           </div>
           <span className="agent-name">Agent Chat</span>
         </div>
-        <button className="new-chat-btn" onClick={handleNewChat} title="New chat">
+        <button className="new-chat-btn" onClick={handleNewChat} title="New user">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
           </svg>
-          <span>New chat</span>
+          <span>New user</span>
         </button>
       </div>
 
