@@ -15,6 +15,7 @@ function parseCitations(text) {
   const citationRegex = /【([^】]*?)†([^】]*?)】/g;
   const citations = [];
   const seen = new Map(); // source -> index
+  let lastIdx = null;
 
   const cleanText = text.replace(citationRegex, (match, id, source) => {
     const key = source || id;
@@ -23,6 +24,8 @@ function parseCitations(text) {
       citations.push({ index: citations.length + 1, id, source: source || id });
     }
     const idx = seen.get(key);
+    if (idx === lastIdx) return "";
+    lastIdx = idx;
     return `<cite-ref data-idx="${idx}"></cite-ref>`;
   });
 
