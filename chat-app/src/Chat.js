@@ -1,26 +1,61 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { sendMessage } from "./api";
+import { streamMessage } from "./api";
 import "./Chat.css";
 
 function generateUserId() {
   return "user-" + crypto.randomUUID();
 }
 
+function AgentAvatar() {
+  return (
+    <div className="avatar agent-avatar">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" fill="currentColor"/>
+      </svg>
+    </div>
+  );
+}
+
+function UserAvatar() {
+  return (
+    <div className="avatar user-avatar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="currentColor"/>
+      </svg>
+    </div>
+  );
+}
+
 function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const [userId, setUserId] = useState(generateUserId);
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, streamingContent, loading]);
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    }
+  }, []);
+
+  useEffect(() => {
+    autoResize();
+  }, [input, autoResize]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
 
@@ -29,70 +64,188 @@ function Chat() {
     setMessages(updatedMessages);
     setInput("");
     setLoading(true);
+    setStreamingContent("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      const reply = await sendMessage(updatedMessages, userId);
+      const fullText = await streamMessage(
+        updatedMessages,
+        userId,
+        (accumulated) => setStreamingContent(accumulated),
+        controller.signal
+      );
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: reply },
+        { role: "assistant", content: fullText },
       ]);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "error", content: `Error: ${err.message}` },
-      ]);
+      if (err.name === "AbortError") {
+        // User stopped generation — keep partial content as message
+        if (streamingContent) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: streamingContent },
+          ]);
+        }
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "error", content: `Error: ${err.message}` },
+        ]);
+      }
     } finally {
       setLoading(false);
+      setStreamingContent("");
+      abortRef.current = null;
     }
   };
 
-  const handleNewUser = () => {
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleNewChat = () => {
+    if (abortRef.current) abortRef.current.abort();
     setUserId(generateUserId());
     setMessages([]);
+    setStreamingContent("");
+    setLoading(false);
   };
 
   return (
     <div className="chat-container">
+      {/* Header */}
       <div className="chat-header">
-        <span>Agent Chat</span>
-        <button className="new-user-btn" onClick={handleNewUser}>New User</button>
-      </div>
-      <div className="chat-messages">
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ node, ...props }) => (
-                  <a target="_blank" rel="noopener noreferrer" {...props} />
-                ),
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
+        <div className="header-left">
+          <div className="agent-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" fill="currentColor"/>
+            </svg>
           </div>
-        ))}
-        {loading && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
+          <span className="agent-name">Agent Chat</span>
+        </div>
+        <button className="new-chat-btn" onClick={handleNewChat} title="New chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span>New chat</span>
+        </button>
+      </div>
+
+      {/* Messages Area */}
+      <div className="chat-messages">
+        {messages.length === 0 && !loading && (
+          <div className="empty-state">
+            <div className="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" fill="currentColor"/>
+              </svg>
+            </div>
+            <h2>How can I help you today?</h2>
+            <p>Ask me anything about any  topic I can assist with.</p>
           </div>
         )}
+
+        {messages.map((msg, i) => (
+          <div key={i} className={`message-row ${msg.role}`}>
+            {msg.role === "assistant" && <AgentAvatar />}
+            {msg.role === "user" && <div className="avatar-spacer" />}
+            <div className={`message-bubble ${msg.role}`}>
+              {msg.role === "error" ? (
+                <span className="error-text">{msg.content}</span>
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: ({ node, ...props }) => (
+                      <a target="_blank" rel="noopener noreferrer" {...props} />
+                    ),
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              )}
+            </div>
+            {msg.role === "user" && <UserAvatar />}
+            {msg.role === "assistant" && <div className="avatar-spacer" />}
+          </div>
+        ))}
+
+        {/* Streaming message */}
+        {loading && streamingContent && (
+          <div className="message-row assistant">
+            <AgentAvatar />
+            <div className="message-bubble assistant">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {streamingContent}
+              </ReactMarkdown>
+            </div>
+            <div className="avatar-spacer" />
+          </div>
+        )}
+
+        {/* Typing indicator */}
+        {loading && !streamingContent && (
+          <div className="message-row assistant">
+            <AgentAvatar />
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div className="avatar-spacer" />
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
-      <form className="chat-input-area" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
-          disabled={loading}
-        />
-        <button type="submit" disabled={loading || !input.trim()}>
-          Send
-        </button>
-      </form>
+
+      {/* Input Area */}
+      <div className="chat-input-wrapper">
+        {loading && (
+          <button className="stop-btn" onClick={handleStop}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+            Stop generating
+          </button>
+        )}
+        <form className="chat-input-area" onSubmit={handleSubmit}>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            disabled={loading}
+            rows={1}
+          />
+          <button
+            type="submit"
+            className="send-btn"
+            disabled={loading || !input.trim()}
+            title="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
+            </svg>
+          </button>
+        </form>
+        <div className="input-hint">
+          Press Enter to send, Shift+Enter for new line
+        </div>
+      </div>
     </div>
   );
 }

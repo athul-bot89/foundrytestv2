@@ -1,6 +1,7 @@
 import os
 import re
-from flask import Flask, request, jsonify, send_from_directory
+import json
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from azure.identity import ClientSecretCredential
 from azure.ai.projects import AIProjectClient
@@ -96,6 +97,51 @@ def chat():
     except Exception as e:
         print("Error:", str(e))
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/chat/stream", methods=["POST"])
+def chat_stream():
+    """SSE streaming endpoint for real-time token-by-token responses."""
+    try:
+        data = request.get_json()
+        messages = data.get("messages", [])
+        user_id = data.get("userId", "anonymous")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    def generate():
+        try:
+            openai_client = _get_project_client().get_openai_client()
+            stream = openai_client.responses.create(
+                input=[
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in messages
+                ],
+                extra_body={
+                    "agent_reference": {
+                        "name": agent_name,
+                        "version": agent_version,
+                        "type": "agent_reference",
+                    }
+                },
+                extra_headers={"X-End-User-ID": user_id},
+                stream=True,
+            )
+            for event in stream:
+                if event.type == "response.output_text.delta":
+                    delta = event.delta
+                    yield f"data: {json.dumps({'delta': delta})}\n\n"
+                elif event.type == "response.completed":
+                    break
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            print("Stream error:", str(e))
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @app.route("/", defaults={"path": ""})

@@ -1,24 +1,25 @@
 .token-info {
-  background: #1e1e2e;
-  border-bottom: 1px solid #333;
-  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 24px;
   font-size: 12px;
-  color: #ccc;
+  color: #6b7280;
   word-break: break-all;
 }
 
 .token-info .token-details {
   margin-bottom: 4px;
+  color: #374151;
 }
 
 .token-info .token-value code {
-  background: #2a2a3e;
+  background: #f3f4f6;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
-  color: #7ec8e3;
+  color: #7c3aed;
 }
 
 .token-info.token-error {
-  color: #ff6b6b;
+  color: #dc2626;
 }

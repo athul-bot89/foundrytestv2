@@ -5,10 +5,12 @@
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #e8eaed;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f9fafb;
 }
 
 .App {
   height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
