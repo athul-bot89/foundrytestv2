@@ -5,6 +5,8 @@ export async function sendMessage(messages, userId) {
     body: JSON.stringify({ messages, userId }),
   });
 
+  
+
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || "Server error");
