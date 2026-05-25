@@ -65,6 +65,31 @@ def sanitize_markdown(text):
     return text
 
 
+def _extract_annotations(response):
+    """Extract file citation annotations from the response to get real source names."""
+    annotations = []
+    try:
+        for output_item in response.output:
+            if hasattr(output_item, "content"):
+                for content_part in output_item.content:
+                    if hasattr(content_part, "annotations"):
+                        for ann in content_part.annotations:
+                            entry = {}
+                            if hasattr(ann, "filename") and ann.filename:
+                                entry["filename"] = ann.filename
+                            elif hasattr(ann, "title") and ann.title:
+                                entry["filename"] = ann.title
+                            if hasattr(ann, "file_id"):
+                                entry["file_id"] = ann.file_id
+                            if hasattr(ann, "url") and ann.url:
+                                entry["url"] = ann.url
+                            if entry:
+                                annotations.append(entry)
+    except Exception:
+        pass
+    return annotations
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
@@ -92,7 +117,8 @@ def chat():
         )
 
         reply = sanitize_markdown(response.output_text)
-        return jsonify({"reply": reply})
+        annotations = _extract_annotations(response)
+        return jsonify({"reply": reply, "annotations": annotations})
     except Exception as e:
         print("Error:", str(e))
         return jsonify({"error": str(e)}), 500
@@ -127,6 +153,7 @@ def chat_stream():
                 stream=True,
             )
             full_text = ""
+            annotations = []
             for event in stream:
                 if event.type == "response.output_text.delta":
                     token = event.delta
@@ -134,10 +161,13 @@ def chat_stream():
                     # Send only the new token — frontend accumulates
                     yield f"data: {json.dumps({'delta': token})}\n\n"
                 elif event.type == "response.completed":
+                    # Extract annotations from the completed response
+                    if hasattr(event, "response"):
+                        annotations = _extract_annotations(event.response)
                     break
             # Send final sanitized full text as a replace to fix markdown
             final = sanitize_markdown(full_text)
-            yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True})}\n\n"
+            yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True, 'annotations': annotations})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             print("Stream error:", str(e))

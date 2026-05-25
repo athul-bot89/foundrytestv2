@@ -38,6 +38,7 @@ export async function streamMessage(messages, userId, onDelta, signal) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let fullText = "";
+  let annotations = [];
   let buffer = "";
 
   while (true) {
@@ -51,7 +52,7 @@ export async function streamMessage(messages, userId, onDelta, signal) {
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       const payload = line.slice(6);
-      if (payload === "[DONE]") return fullText;
+      if (payload === "[DONE]") return { text: fullText, annotations };
       try {
         const parsed = JSON.parse(payload);
         if (parsed.error) throw new Error(parsed.error);
@@ -59,6 +60,7 @@ export async function streamMessage(messages, userId, onDelta, signal) {
           if (parsed.replace === true) {
             // Server sends final sanitized full text
             fullText = parsed.delta;
+            if (parsed.annotations) annotations = parsed.annotations;
           } else {
             // Individual token delta — append
             fullText += parsed.delta;
@@ -71,5 +73,5 @@ export async function streamMessage(messages, userId, onDelta, signal) {
     }
   }
 
-  return fullText;
+  return { text: fullText, annotations };
 }

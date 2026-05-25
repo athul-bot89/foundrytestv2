@@ -10,19 +10,34 @@ import "./Chat.css";
  * Returns { cleanText, citations } where citations is an array of
  * { index, id, source } objects and cleanText has markers replaced
  * with placeholder tokens like [^1].
+ *
+ * @param {string} text - The message text with citation markers
+ * @param {Array} annotations - Optional annotation metadata from API with real filenames
  */
-function parseCitations(text) {
+function parseCitations(text, annotations = []) {
   const citationRegex = /【([^】]*?)†([^】]*?)】/g;
   const citations = [];
   const seen = new Map(); // source -> index
   let lastIdx = null;
+  let annotationIndex = 0;
 
   const cleanText = text.replace(citationRegex, (match, id, source) => {
     const key = source || id;
     if (!seen.has(key)) {
       seen.set(key, citations.length + 1);
-      citations.push({ index: citations.length + 1, id, source: source || id });
+      // Try to get real filename from annotations
+      let displayName = source || id;
+      if (displayName === "source" || !displayName) {
+        // Use annotation filename if available
+        if (annotations[annotationIndex] && annotations[annotationIndex].filename) {
+          displayName = annotations[annotationIndex].filename;
+        } else {
+          displayName = `Source ${citations.length + 1}`;
+        }
+      }
+      citations.push({ index: citations.length + 1, id, source: displayName });
     }
+    annotationIndex++;
     const idx = seen.get(key);
     if (idx === lastIdx) return "";
     lastIdx = idx;
@@ -37,7 +52,7 @@ function parseCitations(text) {
  * Citations appear as numbered superscript pills inline,
  * with a collapsible "References" section at the bottom listing each source.
  */
-function MessageContent({ content, role }) {
+function MessageContent({ content, role, annotations }) {
   const [refsExpanded, setRefsExpanded] = useState(false);
 
   if (role === "user" || role === "error") {
@@ -56,7 +71,7 @@ function MessageContent({ content, role }) {
     );
   }
 
-  const { cleanText, citations } = parseCitations(content);
+  const { cleanText, citations } = parseCitations(content, annotations);
 
   // Convert cite-ref placeholders back into React elements after markdown
   const markdownWithCitations = cleanText.replace(
@@ -195,7 +210,7 @@ function Chat() {
     abortRef.current = controller;
 
     try {
-      const fullText = await streamMessage(
+      const result = await streamMessage(
         updatedMessages,
         userId,
         (accumulated) => setStreamingContent(accumulated),
@@ -203,7 +218,7 @@ function Chat() {
       );
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: fullText },
+        { role: "assistant", content: result.text, annotations: result.annotations },
       ]);
     } catch (err) {
       if (err.name === "AbortError") {
@@ -287,7 +302,7 @@ function Chat() {
             {msg.role === "assistant" && <AgentAvatar />}
             {msg.role === "user" && <div className="avatar-spacer" />}
             <div className={`message-bubble ${msg.role}`}>
-              <MessageContent content={msg.content} role={msg.role} />
+              <MessageContent content={msg.content} role={msg.role} annotations={msg.annotations} />
             </div>
             {msg.role === "user" && <UserAvatar />}
             {msg.role === "assistant" && <div className="avatar-spacer" />}
