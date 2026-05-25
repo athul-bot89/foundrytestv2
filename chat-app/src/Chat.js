@@ -30,11 +30,13 @@ function parseCitations(text) {
 }
 
 /**
- * Renders message content with Foundry-style citation badges.
+ * Renders message content with Azure AI Foundry-style citation badges.
  * Citations appear as numbered superscript pills inline,
- * with a "Sources" section at the bottom listing each reference.
+ * with a collapsible "References" section at the bottom listing each source.
  */
 function MessageContent({ content, role }) {
+  const [refsExpanded, setRefsExpanded] = useState(true);
+
   if (role === "user" || role === "error") {
     if (role === "error") return <span className="error-text">{content}</span>;
     return (
@@ -74,23 +76,50 @@ function MessageContent({ content, role }) {
       </ReactMarkdown>
       {citations.length > 0 && (
         <div className="citations-section">
-          <div className="citations-header">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14,2 14,8 20,8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
+          <button
+            className="citations-toggle"
+            onClick={() => setRefsExpanded(!refsExpanded)}
+            aria-expanded={refsExpanded}
+          >
+            <div className="citations-toggle-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+              </svg>
+              <span>{citations.length} reference{citations.length > 1 ? "s" : ""}</span>
+            </div>
+            <svg
+              className={`citations-chevron ${refsExpanded ? "expanded" : ""}`}
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
-            <span>Sources</span>
-          </div>
-          <div className="citations-list">
-            {citations.map((c) => (
-              <div key={c.index} className="citation-item">
-                <span className="citation-number">{c.index}</span>
-                <span className="citation-source">{c.source}</span>
-              </div>
-            ))}
-          </div>
+          </button>
+          {refsExpanded && (
+            <div className="citations-list">
+              {citations.map((c) => (
+                <div key={c.index} className="citation-card">
+                  <div className="citation-card-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                      <polyline points="14,2 14,8 20,8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                  </div>
+                  <div className="citation-card-content">
+                    <span className="citation-card-title">{c.source}</span>
+                  </div>
+                  <span className="citation-card-number">{c.index}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>

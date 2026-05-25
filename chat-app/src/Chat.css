@@ -29,7 +29,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  background: linear-gradient(135deg, #0f6cbd, #2899f5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -88,11 +88,11 @@
   width: 72px;
   height: 72px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #ede9fe, #f3e8ff);
+  background: linear-gradient(135deg, #e8f4fd, #d4edfc);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #7c3aed;
+  color: #0f6cbd;
   margin-bottom: 20px;
 }
 
@@ -141,7 +141,7 @@
 }
 
 .agent-avatar {
-  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  background: linear-gradient(135deg, #0f6cbd, #2899f5);
   color: white;
 }
 
@@ -164,7 +164,7 @@
 }
 
 .message-bubble.user {
-  background: #ede9fe;
+  background: #e8f4fd;
   color: #1f2937;
   padding: 12px 16px;
   border-radius: 16px 16px 4px 16px;
@@ -218,7 +218,7 @@
 }
 
 .message-bubble.user code {
-  background: rgba(124, 58, 237, 0.1);
+  background: rgba(15, 108, 189, 0.1);
 }
 
 .message-bubble pre {
@@ -239,7 +239,7 @@
 
 /* Links */
 .message-bubble a {
-  color: #7c3aed;
+  color: #0f6cbd;
   text-decoration: none;
   font-weight: 500;
 }
@@ -249,7 +249,7 @@
 }
 
 .message-bubble.user a {
-  color: #5b21b6;
+  color: #0a548a;
 }
 
 /* Tables */
@@ -287,7 +287,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #a855f7;
+  background: #0f6cbd;
   animation: bounce 1.4s infinite ease-in-out;
 }
 
@@ -344,8 +344,8 @@
 }
 
 .chat-input-area:focus-within {
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  border-color: #0f6cbd;
+  box-shadow: 0 0 0 3px rgba(15, 108, 189, 0.1);
 }
 
 .chat-input-area textarea {
@@ -376,7 +376,7 @@
   min-width: 36px;
   border-radius: 10px;
   border: none;
-  background: #7c3aed;
+  background: #0f6cbd;
   color: white;
   display: flex;
   align-items: center;
@@ -386,7 +386,7 @@
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #6d28d9;
+  background: #0a548a;
   transform: scale(1.05);
 }
 
@@ -422,79 +422,141 @@
   background: #9ca3af;
 }
 
-/* ===== Citations (Foundry-style) ===== */
+/* ===== Citations (Azure AI Foundry-style) ===== */
 .citation-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  margin: 0 2px;
-  border-radius: 10px;
-  background: #ede9fe;
-  color: #7c3aed;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: default;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  background: #e8eaf6;
+  color: #0f6cbd;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
   vertical-align: super;
   line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.citation-badge:hover {
+  background: #0f6cbd;
+  color: #ffffff;
 }
 
 .citations-section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
 }
 
-.citations-header {
+.citations-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
 }
 
-.citations-header svg {
-  color: #9ca3af;
+.citations-toggle:hover {
+  background: #ebebeb;
+  border-color: #d0d0d0;
+}
+
+.citations-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #242424;
+}
+
+.citations-toggle-left svg {
+  color: #616161;
+}
+
+.citations-chevron {
+  color: #616161;
+  transition: transform 0.2s ease;
+}
+
+.citations-chevron.expanded {
+  transform: rotate(180deg);
 }
 
 .citations-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
 }
 
-.citation-item {
+.citation-card {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
   border-radius: 8px;
-  font-size: 12px;
-  color: #374151;
-  transition: background 0.15s;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
-.citation-item:hover {
-  background: #f3f4f6;
+.citation-card:hover {
+  background: #f5f5f5;
+  border-color: #0f6cbd;
+  box-shadow: 0 1px 4px rgba(15, 108, 189, 0.08);
 }
 
-.citation-number {
+.citation-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 6px;
+  background: #e8f4fd;
+  color: #0f6cbd;
+}
+
+.citation-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.citation-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #242424;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.citation-card-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 10px;
-  background: #ede9fe;
-  color: #7c3aed;
-  font-size: 10px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e8eaf6;
+  color: #0f6cbd;
+  font-size: 11px;
   font-weight: 700;
 }
 
