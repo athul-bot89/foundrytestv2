@@ -45,9 +45,8 @@ def health():
 
 
 def sanitize_markdown(text):
-    """Fix common markdown issues from LLM output like unbalanced asterisks."""
-    # Remove citation markers like 【4:1†source】
-    text = re.sub(r'【[^】]*†[^】]*】', '', text)
+    """Fix common markdown issues from LLM output like unbalanced asterisks.
+    Citations are preserved for frontend rendering."""
     # Fix lines with unclosed/mismatched bold: "1. **text:" or "1. **text*:"
     # The (?!\*) lookahead ensures we skip already-correct "1. **text:**"
     text = re.sub(
@@ -127,12 +126,18 @@ def chat_stream():
                 extra_headers={"X-End-User-ID": user_id},
                 stream=True,
             )
+            full_text = ""
             for event in stream:
                 if event.type == "response.output_text.delta":
-                    delta = event.delta
-                    yield f"data: {json.dumps({'delta': delta})}\n\n"
+                    full_text += event.delta
+                    # Fix markdown formatting but preserve citations
+                    cleaned = sanitize_markdown(full_text)
+                    yield f"data: {json.dumps({'delta': cleaned, 'replace': True})}\n\n"
                 elif event.type == "response.completed":
                     break
+            # Send final version with markdown fixes (citations preserved)
+            final = sanitize_markdown(full_text)
+            yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             print("Stream error:", str(e))

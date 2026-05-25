@@ -1,8 +1,101 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { streamMessage } from "./api";
 import "./Chat.css";
+
+/**
+ * Parse citation markers like 【4:1†source.pdf】 from the text.
+ * Returns { cleanText, citations } where citations is an array of
+ * { index, id, source } objects and cleanText has markers replaced
+ * with placeholder tokens like [^1].
+ */
+function parseCitations(text) {
+  const citationRegex = /【([^】]*?)†([^】]*?)】/g;
+  const citations = [];
+  const seen = new Map(); // source -> index
+
+  const cleanText = text.replace(citationRegex, (match, id, source) => {
+    const key = source || id;
+    if (!seen.has(key)) {
+      seen.set(key, citations.length + 1);
+      citations.push({ index: citations.length + 1, id, source: source || id });
+    }
+    const idx = seen.get(key);
+    return `<cite-ref data-idx="${idx}"></cite-ref>`;
+  });
+
+  return { cleanText, citations };
+}
+
+/**
+ * Renders message content with Foundry-style citation badges.
+ * Citations appear as numbered superscript pills inline,
+ * with a "Sources" section at the bottom listing each reference.
+ */
+function MessageContent({ content, role }) {
+  if (role === "user" || role === "error") {
+    if (role === "error") return <span className="error-text">{content}</span>;
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node, ...props }) => (
+            <a target="_blank" rel="noopener noreferrer" {...props} />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  }
+
+  const { cleanText, citations } = parseCitations(content);
+
+  // Convert cite-ref placeholders back into React elements after markdown
+  const markdownWithCitations = cleanText.replace(
+    /<cite-ref data-idx="(\d+)"><\/cite-ref>/g,
+    (_, idx) => `<span class="citation-badge">${idx}</span>`
+  );
+
+  return (
+    <>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
+        components={{
+          a: ({ node, ...props }) => (
+            <a target="_blank" rel="noopener noreferrer" {...props} />
+          ),
+        }}
+      >
+        {markdownWithCitations}
+      </ReactMarkdown>
+      {citations.length > 0 && (
+        <div className="citations-section">
+          <div className="citations-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14,2 14,8 20,8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <span>Sources</span>
+          </div>
+          <div className="citations-list">
+            {citations.map((c) => (
+              <div key={c.index} className="citation-item">
+                <span className="citation-number">{c.index}</span>
+                <span className="citation-source">{c.source}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function generateUserId() {
   return "user-" + crypto.randomUUID();
@@ -162,20 +255,7 @@ function Chat() {
             {msg.role === "assistant" && <AgentAvatar />}
             {msg.role === "user" && <div className="avatar-spacer" />}
             <div className={`message-bubble ${msg.role}`}>
-              {msg.role === "error" ? (
-                <span className="error-text">{msg.content}</span>
-              ) : (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: ({ node, ...props }) => (
-                      <a target="_blank" rel="noopener noreferrer" {...props} />
-                    ),
-                  }}
-                >
-                  {msg.content}
-                </ReactMarkdown>
-              )}
+              <MessageContent content={msg.content} role={msg.role} />
             </div>
             {msg.role === "user" && <UserAvatar />}
             {msg.role === "assistant" && <div className="avatar-spacer" />}
@@ -187,9 +267,7 @@ function Chat() {
           <div className="message-row assistant">
             <AgentAvatar />
             <div className="message-bubble assistant">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {streamingContent}
-              </ReactMarkdown>
+              <MessageContent content={streamingContent} role="assistant" />
             </div>
             <div className="avatar-spacer" />
           </div>
