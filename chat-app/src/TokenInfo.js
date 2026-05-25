@@ -25,14 +25,6 @@ function TokenInfo() {
     async function acquireToken() {
       try {
         await msalInstance.initialize();
-        const resp = await msalInstance.handleRedirectPromise();
-
-        if (resp) {
-          setToken(resp.accessToken);
-          setAccountInfo(resp.account);
-          setLoading(false);
-          return;
-        }
 
         const accounts = msalInstance.getAllAccounts();
         if (accounts.length > 0) {
@@ -44,10 +36,14 @@ function TokenInfo() {
             setToken(silentResp.accessToken);
             setAccountInfo(silentResp.account);
           } catch {
-            await msalInstance.acquireTokenRedirect({ scopes: SCOPES });
+            const popupResp = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
+            setToken(popupResp.accessToken);
+            setAccountInfo(popupResp.account);
           }
         } else {
-          await msalInstance.loginRedirect({ scopes: SCOPES });
+          const loginResp = await msalInstance.loginPopup({ scopes: SCOPES });
+          setToken(loginResp.accessToken);
+          setAccountInfo(loginResp.account);
         }
       } catch (err) {
         setError(err.message);
