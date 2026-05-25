@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { sendMessage } from "./api";
 import "./Chat.css";
 
@@ -58,7 +60,16 @@ function Chat() {
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`message ${msg.role}`}>
-            {msg.content}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ node, ...props }) => (
+                  <a target="_blank" rel="noopener noreferrer" {...props} />
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
           </div>
         ))}
         {loading && (
