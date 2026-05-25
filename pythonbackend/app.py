@@ -129,13 +129,13 @@ def chat_stream():
             full_text = ""
             for event in stream:
                 if event.type == "response.output_text.delta":
-                    full_text += event.delta
-                    # Fix markdown formatting but preserve citations
-                    cleaned = sanitize_markdown(full_text)
-                    yield f"data: {json.dumps({'delta': cleaned, 'replace': True})}\n\n"
+                    token = event.delta
+                    full_text += token
+                    # Send only the new token — frontend accumulates
+                    yield f"data: {json.dumps({'delta': token})}\n\n"
                 elif event.type == "response.completed":
                     break
-            # Send final version with markdown fixes (citations preserved)
+            # Send final sanitized full text as a replace to fix markdown
             final = sanitize_markdown(full_text)
             yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True})}\n\n"
             yield "data: [DONE]\n\n"

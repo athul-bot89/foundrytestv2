@@ -27,4 +27,4 @@ ENV STATIC_BUILD_DIR=/app/static-build
 
 EXPOSE 3000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "4", "--timeout", "120", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--worker-class", "gevent", "--workers", "4", "--timeout", "120", "app:app"]

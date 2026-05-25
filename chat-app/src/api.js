@@ -56,10 +56,11 @@ export async function streamMessage(messages, userId, onDelta, signal) {
         const parsed = JSON.parse(payload);
         if (parsed.error) throw new Error(parsed.error);
         if (parsed.delta) {
-          // Server sends full sanitized text with replace:true
-          if (parsed.replace) {
+          if (parsed.replace === true) {
+            // Server sends final sanitized full text
             fullText = parsed.delta;
           } else {
+            // Individual token delta — append
             fullText += parsed.delta;
           }
           onDelta(fullText);
