@@ -1,4 +1,5 @@
 import os
+import re
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from azure.identity import ClientSecretCredential
@@ -42,6 +43,28 @@ def health():
     return jsonify({"status": "ok"})
 
 
+def sanitize_markdown(text):
+    """Fix common markdown issues from LLM output like unbalanced asterisks."""
+    # Remove citation markers like 【4:1†source】
+    text = re.sub(r'【[^】]*†[^】]*】', '', text)
+    # Fix lines with unclosed/mismatched bold: "1. **text:" or "1. **text*:"
+    # The (?!\*) lookahead ensures we skip already-correct "1. **text:**"
+    text = re.sub(
+        r'^(\d+\.\s+)\*\*([^*\n]+?)(\*{0,1}):(?!\*)',
+        r'\1**\2:**',
+        text,
+        flags=re.MULTILINE,
+    )
+    # Fix lines with unclosed single italic: "1. *text:"
+    text = re.sub(
+        r'^(\d+\.\s+)\*([^*\n]+?)(\*{0,1}):(?!\*)',
+        r'\1**\2:**',
+        text,
+        flags=re.MULTILINE,
+    )
+    return text
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
@@ -68,7 +91,8 @@ def chat():
             extra_headers={"X-End-User-ID": user_id},
         )
 
-        return jsonify({"reply": response.output_text})
+        reply = sanitize_markdown(response.output_text)
+        return jsonify({"reply": reply})
     except Exception as e:
         print("Error:", str(e))
         return jsonify({"error": str(e)}), 500
