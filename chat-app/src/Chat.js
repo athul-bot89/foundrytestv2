@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { useMsal } from "@azure/msal-react";
+import { loginRequest } from "./authConfig";
 import { streamMessage } from "./api";
 import "./Chat.css";
 
@@ -144,10 +146,6 @@ function MessageContent({ content, role, annotations }) {
   );
 }
 
-function generateUserId() {
-  return "user-" + crypto.randomUUID();
-}
-
 function AgentAvatar() {
   return (
     <div className="avatar agent-avatar">
@@ -169,14 +167,30 @@ function UserAvatar() {
 }
 
 function Chat() {
+  const { instance, accounts } = useMsal();
+  const account = accounts[0];
+  const userId = account?.localAccountId || "anonymous";
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
-  const [userId, setUserId] = useState(generateUserId);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
+
+  const acquireToken = useCallback(async () => {
+    try {
+      const response = await instance.acquireTokenSilent({
+        ...loginRequest,
+        account,
+      });
+      return response.idToken;
+    } catch {
+      instance.acquireTokenRedirect(loginRequest);
+      return null;
+    }
+  }, [instance, account]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -210,11 +224,13 @@ function Chat() {
     abortRef.current = controller;
 
     try {
+      const accessToken = await acquireToken();
       const result = await streamMessage(
         updatedMessages,
         userId,
         (accumulated) => setStreamingContent(accumulated),
-        controller.signal
+        controller.signal,
+        accessToken
       );
       setMessages((prev) => [
         ...prev,
@@ -257,10 +273,13 @@ function Chat() {
 
   const handleNewChat = () => {
     if (abortRef.current) abortRef.current.abort();
-    setUserId(generateUserId());
     setMessages([]);
     setStreamingContent("");
     setLoading(false);
+  };
+
+  const handleSignOut = () => {
+    instance.logoutRedirect().catch((e) => console.error("Logout failed:", e));
   };
 
   return (
@@ -275,12 +294,22 @@ function Chat() {
           </div>
           <span className="agent-name">Agent Chat</span>
         </div>
-        <button className="new-chat-btn" onClick={handleNewChat} title="New user">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
-          <span>New user</span>
-        </button>
+        <div className="header-right">
+          <button className="new-chat-btn" onClick={handleNewChat} title="New chat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            <span>New chat</span>
+          </button>
+          <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span>Sign out</span>
+          </button>
+        </div>
       </div>
 
       {/* Messages Area */}

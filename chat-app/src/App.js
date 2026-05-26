@@ -1,10 +1,10 @@
-import Chat from './Chat';
+import AuthGate from './AuthGate';
 import './App.css';
 
 function App() {
   return (
     <div className="App">
-      <Chat />
+      <AuthGate />
     </div>
   );
 }

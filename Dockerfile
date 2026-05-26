@@ -5,6 +5,12 @@ WORKDIR /app/chat-app
 COPY chat-app/package.json chat-app/package-lock.json* ./
 RUN npm install
 COPY chat-app/ ./
+
+ARG REACT_APP_AZURE_CLIENT_ID
+ARG REACT_APP_AZURE_TENANT_ID
+ENV REACT_APP_AZURE_CLIENT_ID=$REACT_APP_AZURE_CLIENT_ID
+ENV REACT_APP_AZURE_TENANT_ID=$REACT_APP_AZURE_TENANT_ID
+
 RUN npm run build
 
 # Stage 2: Production image with Flask backend

@@ -6,3 +6,5 @@ openai
 python-dotenv
 gunicorn
 gevent
+PyJWT[crypto]
+requests

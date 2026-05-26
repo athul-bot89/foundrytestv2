@@ -1,7 +1,10 @@
-export async function sendMessage(messages, userId) {
+export async function sendMessage(messages, userId, accessToken) {
   const res = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({ messages, userId }),
   });
 
@@ -22,10 +25,13 @@ export async function sendMessage(messages, userId) {
  * @param {AbortSignal} signal - AbortController signal to cancel the stream
  * @returns {Promise<string>} The full accumulated response text
  */
-export async function streamMessage(messages, userId, onDelta, signal) {
+export async function streamMessage(messages, userId, onDelta, signal, accessToken) {
   const res = await fetch("/api/chat/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({ messages, userId }),
     signal,
   });

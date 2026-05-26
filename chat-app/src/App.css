@@ -14,3 +14,96 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Auth styles */
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.auth-card {
+  background: white;
+  border-radius: 16px;
+  padding: 48px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  max-width: 400px;
+  width: 90%;
+}
+
+.auth-icon {
+  color: #667eea;
+  margin-bottom: 16px;
+}
+
+.auth-card h2 {
+  font-size: 1.5rem;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.auth-card p {
+  color: #666;
+  margin-bottom: 32px;
+  font-size: 0.95rem;
+}
+
+.ms-login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.ms-login-btn:hover {
+  border-color: #0078d4;
+  box-shadow: 0 4px 12px rgba(0, 120, 212, 0.15);
+}
+
+/* Header right buttons */
+.header-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sign-out-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sign-out-btn:hover {
+  border-color: #d32f2f;
+  color: #d32f2f;
+  background: #fff5f5;
+}

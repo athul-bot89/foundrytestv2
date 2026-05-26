@@ -6,6 +6,7 @@ from flask_cors import CORS
 from azure.identity import ClientSecretCredential
 from azure.ai.projects import AIProjectClient
 from dotenv import load_dotenv
+from auth import require_auth
 
 load_dotenv()
 
@@ -91,11 +92,12 @@ def _extract_annotations(response):
 
 
 @app.route("/api/chat", methods=["POST"])
+@require_auth
 def chat():
     try:
         data = request.get_json()
         messages = data.get("messages", [])
-        user_id = data.get("userId", "anonymous")
+        user_id = request.user_id
         openai_client = _get_project_client().get_openai_client()
 
 
@@ -125,12 +127,13 @@ def chat():
 
 
 @app.route("/api/chat/stream", methods=["POST"])
+@require_auth
 def chat_stream():
     """SSE streaming endpoint for real-time token-by-token responses."""
     try:
         data = request.get_json()
         messages = data.get("messages", [])
-        user_id = data.get("userId", "anonymous")
+        user_id = request.user_id
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
