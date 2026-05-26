@@ -1,42 +1,26 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
   "solution": {
-    "name": "chat-app-embed-webpart-client-side-solution",
+    "name": "chat-app-embed-client-side-solution",
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "version": "1.0.0.0",
     "includeClientSideAssets": true,
-    "skipFeatureDeployment": true,
     "isDomainIsolated": false,
     "developer": {
-      "name": "Botangelos",
-      "websiteUrl": "https://botangelos.sharepoint.com",
+      "name": "Your Organization",
+      "websiteUrl": "",
       "privacyUrl": "",
       "termsOfUseUrl": "",
       "mpnId": "Undefined-1.0.0"
     },
     "metadata": {
-      "shortDescription": {
-        "default": "Embeds the React Chat App and passes bearer token from SharePoint"
-      },
-      "longDescription": {
-        "default": "SPFx web part that embeds the React Chat App in an iframe, acquires a bearer token for the custom backend API using AadTokenProvider, and passes it to the embedded app via postMessage."
-      },
-      "screenshotPaths": [],
-      "videoUrl": "",
-      "categories": []
+      "shortDescription": { "default": "Embeds the React Chat App and passes bearer token" },
+      "longDescription": { "default": "SPFx web part that embeds the React Chat App in an iframe and acquires a bearer token for the custom backend API, passing it to the app via postMessage." }
     },
-    "features": [
-      {
-        "title": "Chat App Embed Feature",
-        "description": "Activates the Chat App Embed web part",
-        "id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-        "version": "1.0.0.0"
-      }
-    ],
     "webApiPermissionRequests": [
       {
-        "resource": "Microsoft Graph",
-        "scope": "User.Read"
+        "resource": "YOUR-BACKEND-API-APP-NAME",
+        "scope": "access_as_user"
       }
     ]
   },
