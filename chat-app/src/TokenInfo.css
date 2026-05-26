@@ -1,23 +1,116 @@
 .token-info {
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
-  padding: 8px 24px;
-  font-size: 12px;
+  padding: 10px 24px;
+  font-size: 13px;
   color: #6b7280;
   word-break: break-all;
 }
 
+.token-info.token-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+}
+
+.token-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #7c3aed;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .token-info .token-details {
-  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
   color: #374151;
 }
 
-.token-info .token-value code {
+.token-info .token-details svg {
+  color: #7c3aed;
+  flex-shrink: 0;
+}
+
+.token-info .token-email {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.token-section {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.token-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.token-header strong {
+  font-size: 12px;
+  color: #374151;
+}
+
+.token-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.token-toggle-btn,
+.token-copy-btn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.token-toggle-btn:hover,
+.token-copy-btn:hover {
   background: #f3f4f6;
-  padding: 2px 6px;
+  border-color: #9ca3af;
+}
+
+.token-copy-btn:active {
+  background: #e5e7eb;
+}
+
+.token-value {
+  max-height: 40px;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.token-value.expanded {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.token-value code {
+  background: #f3f4f6;
+  padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
   color: #7c3aed;
+  display: block;
+  word-break: break-all;
+  line-height: 1.5;
 }
 
 .token-info.token-error {
