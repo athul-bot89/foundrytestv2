@@ -13,7 +13,9 @@ function TokenInfo() {
     if (isEmbeddedInIframe) {
       // --- IFRAME MODE: receive token from SPFx web part via postMessage ---
       function handleMessage(event) {
+        console.log("[TokenInfo] postMessage received:", event.origin, event.data?.type);
         if (event.data && event.data.type === "AUTH_TOKEN") {
+          console.log("[TokenInfo] Token received from:", event.origin);
           setToken(event.data.token);
           setUserInfo(event.data.user || null);
           setLoading(false);
@@ -21,10 +23,12 @@ function TokenInfo() {
       }
       window.addEventListener("message", handleMessage);
       // Ask parent for token
+      console.log("[TokenInfo] Requesting token from parent frame...");
       window.parent.postMessage({ type: "REQUEST_TOKEN" }, "*");
 
       // Timeout after 5s if no response
       const timeout = setTimeout(() => {
+        console.error("[TokenInfo] Timeout - no AUTH_TOKEN received in 5s");
         setError("No token received from SharePoint host.");
         setLoading(false);
       }, 5000);
