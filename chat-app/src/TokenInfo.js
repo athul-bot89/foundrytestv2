@@ -1,39 +1,56 @@
 import React, { useState, useEffect } from "react";
-
-// Allowed parent origins that can send tokens via postMessage
-const ALLOWED_ORIGINS = [
-  "https://yourtenant.sharepoint.com",       // Replace with your SharePoint tenant
-  "https://yourtenant-admin.sharepoint.com",
-];
+import { msalInstance, tokenRequest } from "./authConfig";
 
 function TokenInfo() {
   const [token, setToken] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
-  const [waiting, setWaiting] = useState(true);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    function handleMessage(event) {
-      // Validate origin
-      if (!ALLOWED_ORIGINS.some((o) => event.origin.startsWith(o))) return;
-      if (event.data && event.data.type === "AUTH_TOKEN") {
-        setToken(event.data.token);
-        setUserInfo(event.data.user || null);
-        setWaiting(false);
+    async function acquireToken() {
+      try {
+        // Try ssoSilent first — reuses the existing Azure AD session (SharePoint login)
+        const ssoResponse = await msalInstance.ssoSilent(tokenRequest);
+        setToken(ssoResponse.accessToken);
+        setUserInfo({
+          name: ssoResponse.account.name,
+          email: ssoResponse.account.username,
+        });
+      } catch (ssoError) {
+        // ssoSilent failed — try acquireTokenSilent with any cached account
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          try {
+            const silentResponse = await msalInstance.acquireTokenSilent({
+              ...tokenRequest,
+              account: accounts[0],
+            });
+            setToken(silentResponse.accessToken);
+            setUserInfo({
+              name: silentResponse.account.name,
+              email: silentResponse.account.username,
+            });
+          } catch (silentError) {
+            setError("Silent token acquisition failed: " + silentError.message);
+          }
+        } else {
+          setError("No active session found. SSO failed: " + ssoError.message);
+        }
+      } finally {
+        setLoading(false);
       }
     }
 
-    window.addEventListener("message", handleMessage);
-
-    // Ask parent for token on load
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: "REQUEST_TOKEN" }, "*");
-    }
-
-    return () => window.removeEventListener("message", handleMessage);
+    acquireToken();
   }, []);
 
-  if (waiting) {
-    return <div className="token-info">Waiting for token from SharePoint...</div>;
+  if (loading) {
+    return <div className="token-info">Acquiring token silently via MSAL...</div>;
+  }
+
+  if (error) {
+    return <div className="token-info token-error">{error}</div>;
   }
 
   return (
