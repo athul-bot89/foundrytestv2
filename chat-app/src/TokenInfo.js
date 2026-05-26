@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { msalInstance, tokenRequest } from "./authConfig";
 
+const isEmbeddedInIframe = window.parent !== window;
+
 function TokenInfo() {
   const [token, setToken] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
@@ -8,45 +10,95 @@ function TokenInfo() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function acquireToken() {
-      try {
-        // Try ssoSilent first — reuses the existing Azure AD session (SharePoint login)
-        const ssoResponse = await msalInstance.ssoSilent(tokenRequest);
-        setToken(ssoResponse.accessToken);
-        setUserInfo({
-          name: ssoResponse.account.name,
-          email: ssoResponse.account.username,
-        });
-      } catch (ssoError) {
-        // ssoSilent failed — try acquireTokenSilent with any cached account
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-          try {
-            const silentResponse = await msalInstance.acquireTokenSilent({
-              ...tokenRequest,
-              account: accounts[0],
-            });
-            setToken(silentResponse.accessToken);
-            setUserInfo({
-              name: silentResponse.account.name,
-              email: silentResponse.account.username,
-            });
-          } catch (silentError) {
-            setError("Silent token acquisition failed: " + silentError.message);
-          }
-        } else {
-          setError("No active session found. SSO failed: " + ssoError.message);
+    if (isEmbeddedInIframe) {
+      // --- IFRAME MODE: receive token from SPFx web part via postMessage ---
+      function handleMessage(event) {
+        if (event.data && event.data.type === "AUTH_TOKEN") {
+          setToken(event.data.token);
+          setUserInfo(event.data.user || null);
+          setLoading(false);
         }
-      } finally {
-        setLoading(false);
       }
-    }
+      window.addEventListener("message", handleMessage);
+      // Ask parent for token
+      window.parent.postMessage({ type: "REQUEST_TOKEN" }, "*");
 
-    acquireToken();
+      // Timeout after 5s if no response
+      const timeout = setTimeout(() => {
+        setError("No token received from SharePoint host.");
+        setLoading(false);
+      }, 5000);
+
+      return () => {
+        window.removeEventListener("message", handleMessage);
+        clearTimeout(timeout);
+      };
+    } else {
+      // --- STANDALONE MODE: use MSAL.js (dev/testing outside SharePoint) ---
+      async function acquireToken() {
+        try {
+          const ssoResponse = await msalInstance.ssoSilent(tokenRequest);
+          setToken(ssoResponse.accessToken);
+          setUserInfo({
+            name: ssoResponse.account.name,
+            email: ssoResponse.account.username,
+          });
+        } catch (ssoError) {
+          // ssoSilent failed — try acquireTokenSilent with cached account
+          const accounts = msalInstance.getAllAccounts();
+          if (accounts.length > 0) {
+            try {
+              const silentResponse = await msalInstance.acquireTokenSilent({
+                ...tokenRequest,
+                account: accounts[0],
+              });
+              setToken(silentResponse.accessToken);
+              setUserInfo({
+                name: silentResponse.account.name,
+                email: silentResponse.account.username,
+              });
+            } catch (silentError) {
+              // Fall back to popup login
+              try {
+                const popupResponse = await msalInstance.acquireTokenPopup(tokenRequest);
+                setToken(popupResponse.accessToken);
+                setUserInfo({
+                  name: popupResponse.account.name,
+                  email: popupResponse.account.username,
+                });
+              } catch (popupError) {
+                setError("Login failed: " + popupError.message);
+              }
+            }
+          } else {
+            // No cached account — trigger popup login
+            try {
+              const popupResponse = await msalInstance.acquireTokenPopup(tokenRequest);
+              setToken(popupResponse.accessToken);
+              setUserInfo({
+                name: popupResponse.account.name,
+                email: popupResponse.account.username,
+              });
+            } catch (popupError) {
+              setError("Login failed: " + popupError.message);
+            }
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
+      acquireToken();
+    }
   }, []);
 
   if (loading) {
-    return <div className="token-info">Acquiring token silently via MSAL...</div>;
+    return (
+      <div className="token-info">
+        {isEmbeddedInIframe
+          ? "Waiting for token from SharePoint..."
+          : "Acquiring token via MSAL..."}
+      </div>
+    );
   }
 
   if (error) {

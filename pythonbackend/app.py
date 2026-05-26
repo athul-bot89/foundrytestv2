@@ -44,6 +44,16 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/config")
+def frontend_config():
+    """Expose non-secret MSAL config to the React frontend at runtime."""
+    return jsonify({
+        "clientId": os.environ.get("MSAL_CLIENT_ID", ""),
+        "tenantId": os.environ.get("AZURE_TENANT_ID", ""),
+        "tokenScope": os.environ.get("MSAL_TOKEN_SCOPE", "https://cognitiveservices.azure.com/.default"),
+    })
+
+
 def sanitize_markdown(text):
     """Fix common markdown issues from LLM output like unbalanced asterisks.
     Citations are preserved for frontend rendering."""

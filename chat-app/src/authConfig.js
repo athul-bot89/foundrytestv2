@@ -1,26 +1,38 @@
 import { PublicClientApplication, LogLevel } from "@azure/msal-browser";
 
-const msalConfig = {
-  auth: {
-    clientId: "YOUR_APP_CLIENT_ID",           // Replace with your Azure AD app registration client ID
-    authority: "https://login.microsoftonline.com/YOUR_TENANT_ID", // Replace with your tenant ID
-    redirectUri: window.location.origin,
-  },
-  cache: {
-    cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: true,              // Helps with IE11/Edge issues in iframes
-  },
-  system: {
-    loggerOptions: {
-      logLevel: LogLevel.Warning,
+let msalInstance = null;
+let tokenRequest = null;
+
+export async function initializeMsal() {
+  const res = await fetch("/api/config");
+  const config = await res.json();
+
+  const msalConfig = {
+    auth: {
+      clientId: config.clientId,
+      authority: `https://login.microsoftonline.com/${config.tenantId}`,
+      redirectUri: window.location.origin,
     },
-    allowRedirectInIframe: true,               // Required when embedded in SharePoint iframe
-  },
-};
+    cache: {
+      cacheLocation: "sessionStorage",
+      storeAuthStateInCookie: true,
+    },
+    system: {
+      loggerOptions: {
+        logLevel: LogLevel.Warning,
+      },
+      allowRedirectInIframe: true,
+    },
+  };
 
-export const msalInstance = new PublicClientApplication(msalConfig);
+  msalInstance = new PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
 
-// Scope for Azure AI Foundry / Cognitive Services
-export const tokenRequest = {
-  scopes: ["https://cognitiveservices.azure.com/.default"],
-};
+  tokenRequest = {
+    scopes: [config.tokenScope || "https://cognitiveservices.azure.com/.default"],
+  };
+
+  return msalInstance;
+}
+
+export { msalInstance, tokenRequest };
