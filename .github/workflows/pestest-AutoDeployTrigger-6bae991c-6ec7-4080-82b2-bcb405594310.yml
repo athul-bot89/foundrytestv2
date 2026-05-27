@@ -30,14 +30,16 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
           registryUrl: athul.azurecr.io
           registryUsername: ${{ secrets.PESTEST_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.PESTEST_REGISTRY_PASSWORD }}
           containerAppName: pestest
           resourceGroup: zapia
           imageToBuild: athul.azurecr.io/pestest:${{ github.sha }}
+          environmentVariables: |
+            AGENT_NAME=${{ secrets.AGENT_NAME }}
+            AZURE_ENDPOINT=${{ secrets.AZURE_ENDPOINT }}
+            AGENT_VERSION=${{ secrets.AGENT_VERSION }}
           
             
 
