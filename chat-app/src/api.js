@@ -97,6 +97,39 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
       }
     }
   }
+}
+
+/**
+ * Send feedback (like/dislike) for a message.
+ * @param {number} messageIndex - Index of the message in the conversation
+ * @param {string} rating - "like" or "dislike"
+ * @param {string} messageContent - The message content (will be truncated server-side)
+ * @param {string} userId - The user ID
+ * @param {string} accessToken - Bearer token
+ * @returns {Promise<object>}
+ */
+export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken) {
+  const res = await fetch("/api/feedback", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ messageIndex, rating, messageContent, userId }),
+  });
+
+  if (!res.ok) {
+    let err = {};
+    try { err = await res.json(); } catch { /* non-JSON response */ }
+    throw new ApiError(
+      err.error || `Server error (${res.status})`,
+      err.code || "UNKNOWN",
+      res.status
+    );
+  }
+
+  return await res.json();
+}
 
   return { text: fullText, annotations };
 }

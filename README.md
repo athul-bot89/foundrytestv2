@@ -151,3 +151,37 @@ All `/api/*` endpoints require a valid `Authorization: Bearer <token>` header.
     ├── requirements.txt
     └── .env.example
 ```
+
+
+
+
+
+# === Configuration - fill these in ===
+RESOURCE_GROUP="your-resource-group"
+APP_NAME="your-container-app-name"
+IMAGE="ghcr.io/athul-bot89/foundrytestv2:sha-7adefd4"
+
+# App environment variables
+CLIENT_ID="your-app-registration-client-id"
+TENANT_ID="your-azure-ad-tenant-id"
+AZURE_ENDPOINT="https://your-project.services.ai.azure.com"
+AGENT_NAME="your-agent-name"
+AGENT_VERSION="1"
+
+# === Deploy to existing Container App ===
+az containerapp update \
+  --name $APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image $IMAGE \
+  --set-env-vars \
+    CLIENT_ID=$CLIENT_ID \
+    TENANT_ID=$TENANT_ID \
+    AZURE_ENDPOINT=$AZURE_ENDPOINT \
+    AGENT_NAME=$AGENT_NAME \
+    AGENT_VERSION=$AGENT_VERSION
+
+az containerapp ingress update \
+  --name $APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --target-port 3000 \
+  --type external

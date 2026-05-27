@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { streamMessage } from "./api";
+import { streamMessage, sendFeedback } from "./api";
 import "./Chat.css";
 
 /**
@@ -160,6 +160,7 @@ function Chat({ token, email, onSignOut }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [feedbackGiven, setFeedbackGiven] = useState({});
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
@@ -255,6 +256,16 @@ function Chat({ token, email, onSignOut }) {
     setMessages([]);
     setStreamingContent("");
     setLoading(false);
+    setFeedbackGiven({});
+  };
+
+  const handleFeedback = async (messageIndex, rating, content) => {
+    setFeedbackGiven((prev) => ({ ...prev, [messageIndex]: rating }));
+    try {
+      await sendFeedback(messageIndex, rating, content, userId, token);
+    } catch (err) {
+      console.error("[Feedback] Failed to send:", err.message);
+    }
   };
 
   return (
@@ -307,6 +318,32 @@ function Chat({ token, email, onSignOut }) {
             {msg.role === "user" && <div className="avatar-spacer" />}
             <div className={`message-bubble ${msg.role}`}>
               <MessageContent content={msg.content} role={msg.role} annotations={msg.annotations} />
+              {msg.role === "assistant" && (
+                <div className="feedback-buttons">
+                  <button
+                    className={`feedback-btn${feedbackGiven[i] === "like" ? " selected" : ""}`}
+                    onClick={() => handleFeedback(i, "like", msg.content)}
+                    title="Like"
+                    disabled={feedbackGiven[i] === "like"}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/>
+                      <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
+                    </svg>
+                  </button>
+                  <button
+                    className={`feedback-btn${feedbackGiven[i] === "dislike" ? " selected" : ""}`}
+                    onClick={() => handleFeedback(i, "dislike", msg.content)}
+                    title="Dislike"
+                    disabled={feedbackGiven[i] === "dislike"}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/>
+                      <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/>
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
             {msg.role === "user" && <UserAvatar />}
             {msg.role === "assistant" && <div className="avatar-spacer" />}

@@ -224,6 +224,35 @@ def chat_stream():
     })
 
 
+@app.route("/api/feedback", methods=["POST"])
+def feedback():
+    """Log user feedback (like/dislike) for a chat message."""
+    token = _get_bearer_token()
+    if not token:
+        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
+    try:
+        data = request.get_json()
+        if not data or "rating" not in data:
+            return jsonify({"error": "Request body must include 'rating'", "code": "BAD_REQUEST"}), 400
+
+        rating = data.get("rating")
+        message_index = data.get("messageIndex")
+        message_content = (data.get("messageContent") or "")[:200]
+        user_id = data.get("userId", "unknown")
+
+        logger.info(
+            "FEEDBACK | user=%s | messageIndex=%s | rating=%s | content=%s",
+            user_id,
+            message_index,
+            rating,
+            message_content,
+        )
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.exception("Unexpected error in /api/feedback")
+        return jsonify({"error": str(e), "code": "INTERNAL_ERROR"}), 500
+
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
