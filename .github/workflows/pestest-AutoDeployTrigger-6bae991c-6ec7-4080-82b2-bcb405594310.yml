@@ -27,15 +27,23 @@ jobs:
           creds: ${{ secrets.PESTEST_AZURE_CREDENTIALS }}
 
       - name: Build and push container image to registry
+        run: |
+          docker login athul.azurecr.io -u ${{ secrets.PESTEST_REGISTRY_USERNAME }} -p ${{ secrets.PESTEST_REGISTRY_PASSWORD }}
+          docker build \
+            --build-arg VITE_CLIENT_ID=${{ secrets.VITE_CLIENT_ID }} \
+            --build-arg VITE_TENANT_ID=${{ secrets.VITE_TENANT_ID }} \
+            -t athul.azurecr.io/pestest:${{ github.sha }} .
+          docker push athul.azurecr.io/pestest:${{ github.sha }}
+
+      - name: Deploy to Container Apps
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}
+          containerAppName: pestest
+          resourceGroup: zapia
           registryUrl: athul.azurecr.io
           registryUsername: ${{ secrets.PESTEST_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.PESTEST_REGISTRY_PASSWORD }}
-          containerAppName: pestest
-          resourceGroup: zapia
-          imageToBuild: athul.azurecr.io/pestest:${{ github.sha }}
+          imageToDeploy: athul.azurecr.io/pestest:${{ github.sha }}
           environmentVariables: |
             AGENT_NAME=${{ secrets.AGENT_NAME }}
             AZURE_ENDPOINT=${{ secrets.AZURE_ENDPOINT }}
