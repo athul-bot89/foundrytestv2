@@ -130,6 +130,3 @@ export async function sendFeedback(messageIndex, rating, messageContent, userId,
 
   return await res.json();
 }
-
-  return { text: fullText, annotations };
-}
