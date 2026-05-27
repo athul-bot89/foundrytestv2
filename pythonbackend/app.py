@@ -1,14 +1,21 @@
 import os
 import re
 import json
+import logging
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
-from azure.identity import ClientSecretCredential
+from azure.core.credentials import AccessToken, TokenCredential
+from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
 from azure.ai.projects import AIProjectClient
 from dotenv import load_dotenv
-from auth import require_auth
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # In Docker, React build is copied to /app/static-build
 # Locally, fall back to ../chat-app/dist
@@ -24,21 +31,28 @@ endpoint = os.environ.get("AZURE_ENDPOINT")
 agent_name = os.environ.get("AGENT_NAME")
 agent_version = os.environ.get("AGENT_VERSION")
 
-project_client = None
 
-def _get_project_client():
-    global project_client
-    if project_client is None:
-        credential = ClientSecretCredential(
-            tenant_id=os.environ["AZURE_TENANT_ID"],
-            client_id=os.environ["AZURE_CLIENT_ID"],
-            client_secret=os.environ["AZURE_CLIENT_SECRET"],
-        )
-        project_client = AIProjectClient(
-            endpoint=endpoint,
-            credential=credential,
-        )
-    return project_client
+class UserTokenCredential(TokenCredential):
+    """Wraps a user's access token to satisfy the TokenCredential interface."""
+    def __init__(self, token: str):
+        self._token = token
+
+    def get_token(self, *scopes, **kwargs):
+        return AccessToken(self._token, 0)
+
+
+def _get_bearer_token():
+    """Extract Bearer token from the Authorization header."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    return auth_header[7:]
+
+
+def _get_project_client_for_token(token: str):
+    """Create an AIProjectClient using the user's access token."""
+    credential = UserTokenCredential(token)
+    return AIProjectClient(endpoint=endpoint, credential=credential)
 
 @app.route("/health")
 def health():
@@ -92,13 +106,17 @@ def _extract_annotations(response):
 
 
 @app.route("/api/chat", methods=["POST"])
-@require_auth
 def chat():
+    token = _get_bearer_token()
+    if not token:
+        logger.warning("Chat request missing Authorization header")
+        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
     try:
         data = request.get_json()
+        if not data or not data.get("messages"):
+            return jsonify({"error": "Request body must include 'messages'", "code": "BAD_REQUEST"}), 400
         messages = data.get("messages", [])
-        user_id = request.user_id
-        openai_client = _get_project_client().get_openai_client()
+        openai_client = _get_project_client_for_token(token).get_openai_client()
 
         response = openai_client.responses.create(
             input=[
@@ -112,31 +130,41 @@ def chat():
                     "type": "agent_reference",
                 }
             },
-            extra_headers={"X-End-User-ID": user_id},
         )
 
         reply = sanitize_markdown(response.output_text)
         annotations = _extract_annotations(response)
         return jsonify({"reply": reply, "annotations": annotations})
+    except ClientAuthenticationError as e:
+        logger.error("Azure auth failed: %s", e.message)
+        return jsonify({"error": "Authentication failed — token may be expired or lack permissions", "code": "AUTH_FAILED"}), 401
+    except HttpResponseError as e:
+        logger.error("Azure API error [%s]: %s", e.status_code, e.message)
+        return jsonify({"error": e.message, "code": "UPSTREAM_ERROR", "status": e.status_code}), 502
     except Exception as e:
-        print("Error:", str(e))
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Unexpected error in /api/chat")
+        return jsonify({"error": "Internal server error", "code": "INTERNAL_ERROR"}), 500
 
 
 @app.route("/api/chat/stream", methods=["POST"])
-@require_auth
 def chat_stream():
     """SSE streaming endpoint for real-time token-by-token responses."""
+    token = _get_bearer_token()
+    if not token:
+        logger.warning("Stream request missing Authorization header")
+        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
     try:
         data = request.get_json()
+        if not data or not data.get("messages"):
+            return jsonify({"error": "Request body must include 'messages'", "code": "BAD_REQUEST"}), 400
         messages = data.get("messages", [])
-        user_id = request.user_id
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        logger.error("Failed to parse stream request body: %s", e)
+        return jsonify({"error": "Invalid request body", "code": "BAD_REQUEST"}), 400
 
     def generate():
         try:
-            openai_client = _get_project_client().get_openai_client()
+            openai_client = _get_project_client_for_token(token).get_openai_client()
             stream = openai_client.responses.create(
                 input=[
                     {"role": msg["role"], "content": msg["content"]}
@@ -149,19 +177,16 @@ def chat_stream():
                         "type": "agent_reference",
                     }
                 },
-                extra_headers={"X-End-User-ID": user_id},
                 stream=True,
             )
             full_text = ""
             annotations = []
             for event in stream:
                 if event.type == "response.output_text.delta":
-                    token = event.delta
-                    full_text += token
-                    # Send only the new token — frontend accumulates
-                    yield f"data: {json.dumps({'delta': token})}\n\n"
+                    chunk = event.delta
+                    full_text += chunk
+                    yield f"data: {json.dumps({'delta': chunk})}\n\n"
                 elif event.type == "response.completed":
-                    # Extract annotations from the completed response
                     if hasattr(event, "response"):
                         annotations = _extract_annotations(event.response)
                     break
@@ -169,9 +194,15 @@ def chat_stream():
             final = sanitize_markdown(full_text)
             yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True, 'annotations': annotations})}\n\n"
             yield "data: [DONE]\n\n"
+        except ClientAuthenticationError as e:
+            logger.error("Azure auth failed during stream: %s", e.message)
+            yield f"data: {json.dumps({'error': 'Authentication failed — token may be expired', 'code': 'AUTH_FAILED'})}\n\n"
+        except HttpResponseError as e:
+            logger.error("Azure API error during stream [%s]: %s", e.status_code, e.message)
+            yield f"data: {json.dumps({'error': e.message, 'code': 'UPSTREAM_ERROR'})}\n\n"
         except Exception as e:
-            print("Stream error:", str(e))
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            logger.exception("Unexpected error in /api/chat/stream")
+            yield f"data: {json.dumps({'error': 'Internal server error', 'code': 'INTERNAL_ERROR'})}\n\n"
 
     return Response(generate(), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",

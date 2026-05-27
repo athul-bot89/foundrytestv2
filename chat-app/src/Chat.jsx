@@ -216,10 +216,19 @@ function Chat({ token, email, onSignOut }) {
           ]);
         }
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "error", content: `Error: ${err.message}` },
-        ]);
+        const isAuth = err.code === "AUTH_FAILED" || err.code === "AUTH_MISSING" || err.status === 401;
+        if (isAuth) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "error", content: "Session expired. Please sign out and sign in again." },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "error", content: `Error: ${err.message}` },
+          ]);
+        }
+        console.error(`[Chat] ${err.code || "ERROR"}:`, err.message);
       }
     } finally {
       setLoading(false);

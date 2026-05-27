@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  constructor(message, code, status) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 export async function sendMessage(messages, userId, accessToken) {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -9,8 +18,13 @@ export async function sendMessage(messages, userId, accessToken) {
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Server error");
+    let err = {};
+    try { err = await res.json(); } catch { /* non-JSON response */ }
+    throw new ApiError(
+      err.error || `Server error (${res.status})`,
+      err.code || "UNKNOWN",
+      res.status
+    );
   }
 
   const data = await res.json();
@@ -37,8 +51,13 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Server error");
+    let err = {};
+    try { err = await res.json(); } catch { /* non-JSON response */ }
+    throw new ApiError(
+      err.error || `Server error (${res.status})`,
+      err.code || "UNKNOWN",
+      res.status
+    );
   }
 
   const reader = res.body.getReader();
@@ -61,7 +80,7 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
       if (payload === "[DONE]") return { text: fullText, annotations };
       try {
         const parsed = JSON.parse(payload);
-        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.error) throw new ApiError(parsed.error, parsed.code || "STREAM_ERROR", 0);
         if (parsed.delta) {
           if (parsed.replace === true) {
             // Server sends final sanitized full text
