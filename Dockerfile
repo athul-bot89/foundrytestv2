@@ -31,6 +31,8 @@ COPY --from=frontend-build /app/chat-app/dist /app/static-build
 # Set environment variable for static build path
 ENV STATIC_BUILD_DIR=/app/static-build
 
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 3000
 
 CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--worker-class", "gevent", "--workers", "4", "--timeout", "120", "app:app"]

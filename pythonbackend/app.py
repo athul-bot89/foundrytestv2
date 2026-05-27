@@ -143,7 +143,7 @@ def chat():
         return jsonify({"error": e.message, "code": "UPSTREAM_ERROR", "status": e.status_code}), 502
     except Exception as e:
         logger.exception("Unexpected error in /api/chat")
-        return jsonify({"error": "Internal server error", "code": "INTERNAL_ERROR"}), 500
+        return jsonify({"error": str(e), "code": "INTERNAL_ERROR"}), 500
 
 
 @app.route("/api/chat/stream", methods=["POST"])
@@ -202,7 +202,7 @@ def chat_stream():
             yield f"data: {json.dumps({'error': e.message, 'code': 'UPSTREAM_ERROR'})}\n\n"
         except Exception as e:
             logger.exception("Unexpected error in /api/chat/stream")
-            yield f"data: {json.dumps({'error': 'Internal server error', 'code': 'INTERNAL_ERROR'})}\n\n"
+            yield f"data: {json.dumps({'error': str(e), 'code': 'INTERNAL_ERROR'})}\n\n"
 
     return Response(generate(), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
