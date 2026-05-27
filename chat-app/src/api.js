@@ -64,6 +64,7 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
   const decoder = new TextDecoder();
   let fullText = "";
   let annotations = [];
+  let messageId = "";
   let buffer = "";
 
   while (true) {
@@ -77,7 +78,7 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       const payload = line.slice(6);
-      if (payload === "[DONE]") return { text: fullText, annotations };
+      if (payload === "[DONE]") return { text: fullText, annotations, messageId };
       try {
         const parsed = JSON.parse(payload);
         if (parsed.error) throw new ApiError(parsed.error, parsed.code || "STREAM_ERROR", 0);
@@ -86,6 +87,7 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
             // Server sends final sanitized full text
             fullText = parsed.delta;
             if (parsed.annotations) annotations = parsed.annotations;
+            if (parsed.messageId) messageId = parsed.messageId;
           } else {
             // Individual token delta — append
             fullText += parsed.delta;
@@ -106,16 +108,18 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
  * @param {string} messageContent - The message content (will be truncated server-side)
  * @param {string} userId - The user ID
  * @param {string} accessToken - Bearer token
+ * @param {string} threadId - The conversation thread ID
+ * @param {string} messageId - The backend message ID
  * @returns {Promise<object>}
  */
-export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken) {
+export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ messageIndex, rating, messageContent, userId }),
+    body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId }),
   });
 
   if (!res.ok) {

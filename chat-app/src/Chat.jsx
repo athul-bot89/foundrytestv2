@@ -164,6 +164,7 @@ function Chat({ token, email, onSignOut }) {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
+  const threadIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -206,7 +207,7 @@ function Chat({ token, email, onSignOut }) {
       );
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: result.text, annotations: result.annotations },
+        { role: "assistant", content: result.text, annotations: result.annotations, messageId: result.messageId },
       ]);
     } catch (err) {
       if (err.name === "AbortError") {
@@ -257,12 +258,13 @@ function Chat({ token, email, onSignOut }) {
     setStreamingContent("");
     setLoading(false);
     setFeedbackGiven({});
+    threadIdRef.current = crypto.randomUUID();
   };
 
-  const handleFeedback = async (messageIndex, rating, content) => {
+  const handleFeedback = async (messageIndex, rating, content, messageId) => {
     setFeedbackGiven((prev) => ({ ...prev, [messageIndex]: rating }));
     try {
-      await sendFeedback(messageIndex, rating, content, userId, token);
+      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "");
     } catch (err) {
       console.error("[Feedback] Failed to send:", err.message);
     }
@@ -322,7 +324,7 @@ function Chat({ token, email, onSignOut }) {
                 <div className="feedback-buttons">
                   <button
                     className={`feedback-btn${feedbackGiven[i] === "like" ? " selected" : ""}`}
-                    onClick={() => handleFeedback(i, "like", msg.content)}
+                    onClick={() => handleFeedback(i, "like", msg.content, msg.messageId)}
                     title="Like"
                     disabled={feedbackGiven[i] === "like"}
                   >
@@ -333,7 +335,7 @@ function Chat({ token, email, onSignOut }) {
                   </button>
                   <button
                     className={`feedback-btn${feedbackGiven[i] === "dislike" ? " selected" : ""}`}
-                    onClick={() => handleFeedback(i, "dislike", msg.content)}
+                    onClick={() => handleFeedback(i, "dislike", msg.content, msg.messageId)}
                     title="Dislike"
                     disabled={feedbackGiven[i] === "dislike"}
                   >

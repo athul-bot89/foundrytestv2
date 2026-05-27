@@ -135,7 +135,8 @@ def chat():
 
         reply = sanitize_markdown(response.output_text)
         annotations = _extract_annotations(response)
-        return jsonify({"reply": reply, "annotations": annotations})
+        message_id = getattr(response, "id", None) or ""
+        return jsonify({"reply": reply, "annotations": annotations, "messageId": message_id})
     except (ClientAuthenticationError, OpenAIAuthError) as e:
         msg = getattr(e, 'message', str(e))
         logger.error("Auth failed: %s", msg)
@@ -189,6 +190,7 @@ def chat_stream():
             )
             full_text = ""
             annotations = []
+            message_id = ""
             for event in stream:
                 if event.type == "response.output_text.delta":
                     chunk = event.delta
@@ -197,10 +199,11 @@ def chat_stream():
                 elif event.type == "response.completed":
                     if hasattr(event, "response"):
                         annotations = _extract_annotations(event.response)
+                        message_id = getattr(event.response, "id", None) or ""
                     break
             # Send final sanitized full text as a replace to fix markdown
             final = sanitize_markdown(full_text)
-            yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True, 'annotations': annotations})}\n\n"
+            yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True, 'annotations': annotations, 'messageId': message_id})}\n\n"
             yield "data: [DONE]\n\n"
         except (ClientAuthenticationError, OpenAIAuthError) as e:
             logger.error("Auth failed during stream: %s", e)
@@ -239,10 +242,14 @@ def feedback():
         message_index = data.get("messageIndex")
         message_content = (data.get("messageContent") or "")[:200]
         user_id = data.get("userId", "unknown")
+        thread_id = data.get("threadId", "")
+        message_id = data.get("messageId", "")
 
         logger.info(
-            "FEEDBACK | user=%s | messageIndex=%s | rating=%s | content=%s",
+            "FEEDBACK | user=%s | threadId=%s | messageId=%s | messageIndex=%s | rating=%s | content=%s",
             user_id,
+            thread_id,
+            message_id,
             message_index,
             rating,
             message_content,
