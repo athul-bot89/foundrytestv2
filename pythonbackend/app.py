@@ -25,6 +25,22 @@ STATIC_BUILD_DIR = os.environ.get(
     os.path.join(os.path.dirname(__file__), "..", "chat-app", "dist"),
 )
 
+# Generate auth-config.js from runtime env vars (backup for when entrypoint.sh is bypassed)
+_client_id = os.environ.get("CLIENT_ID", "")
+_tenant_id = os.environ.get("TENANT_ID", "")
+if _client_id and _tenant_id:
+    _auth_config_path = os.path.join(STATIC_BUILD_DIR, "auth-config.js")
+    try:
+        with open(_auth_config_path, "w") as f:
+            f.write(f'window.__AUTH_CONFIG__ = {{\n')
+            f.write(f'  clientId: "{_client_id}",\n')
+            f.write(f'  tenantId: "{_tenant_id}",\n')
+            f.write(f'  scopes: ["https://ai.azure.com/.default"]\n')
+            f.write(f'}};\n')
+        logger.info("Generated auth-config.js with CLIENT_ID and TENANT_ID")
+    except OSError as e:
+        logger.warning(f"Could not write auth-config.js: {e}")
+
 app = Flask(__name__, static_folder=os.path.join(STATIC_BUILD_DIR, "static"), static_url_path="/static")
 CORS(app)
 
