@@ -297,7 +297,7 @@ function Chat({ token, email, onSignOut }) {
               </svg>
             </div>
             <h2>How can I help you today?</h2>
-            <p>Ask me anything about any topic I can assist with.</p>
+            <p>ask me anythin about the company policies</p>
           </div>
         )}
 
