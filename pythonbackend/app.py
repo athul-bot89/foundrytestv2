@@ -11,10 +11,10 @@ from auth import require_auth
 load_dotenv()
 
 # In Docker, React build is copied to /app/static-build
-# Locally, fall back to ../chat-app/build
+# Locally, fall back to ../chat-app/dist
 STATIC_BUILD_DIR = os.environ.get(
     "STATIC_BUILD_DIR",
-    os.path.join(os.path.dirname(__file__), "..", "chat-app", "build"),
+    os.path.join(os.path.dirname(__file__), "..", "chat-app", "dist"),
 )
 
 app = Flask(__name__, static_folder=os.path.join(STATIC_BUILD_DIR, "static"), static_url_path="/static")
@@ -99,9 +99,6 @@ def chat():
         messages = data.get("messages", [])
         user_id = request.user_id
         openai_client = _get_project_client().get_openai_client()
-
-
-        print(user_id, messages)
 
         response = openai_client.responses.create(
             input=[

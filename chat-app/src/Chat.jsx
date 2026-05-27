@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { useMsal } from "@azure/msal-react";
-import { loginRequest } from "./authConfig";
 import { streamMessage } from "./api";
 import "./Chat.css";
 
@@ -12,14 +10,11 @@ import "./Chat.css";
  * Returns { cleanText, citations } where citations is an array of
  * { index, id, source } objects and cleanText has markers replaced
  * with placeholder tokens like [^1].
- *
- * @param {string} text - The message text with citation markers
- * @param {Array} annotations - Optional annotation metadata from API with real filenames
  */
 function parseCitations(text, annotations = []) {
   const citationRegex = /【([^】]*?)†([^】]*?)】/g;
   const citations = [];
-  const seen = new Map(); // source -> index
+  const seen = new Map();
   let lastIdx = null;
   let annotationIndex = 0;
 
@@ -27,10 +22,8 @@ function parseCitations(text, annotations = []) {
     const key = source || id;
     if (!seen.has(key)) {
       seen.set(key, citations.length + 1);
-      // Try to get real filename from annotations
       let displayName = source || id;
       if (displayName === "source" || !displayName) {
-        // Use annotation filename if available
         if (annotations[annotationIndex] && annotations[annotationIndex].filename) {
           displayName = annotations[annotationIndex].filename;
         } else {
@@ -49,11 +42,6 @@ function parseCitations(text, annotations = []) {
   return { cleanText, citations };
 }
 
-/**
- * Renders message content with Azure AI Foundry-style citation badges.
- * Citations appear as numbered superscript pills inline,
- * with a collapsible "References" section at the bottom listing each source.
- */
 function MessageContent({ content, role, annotations }) {
   const [refsExpanded, setRefsExpanded] = useState(false);
 
@@ -75,7 +63,6 @@ function MessageContent({ content, role, annotations }) {
 
   const { cleanText, citations } = parseCitations(content, annotations);
 
-  // Convert cite-ref placeholders back into React elements after markdown
   const markdownWithCitations = cleanText.replace(
     /<cite-ref data-idx="(\d+)"><\/cite-ref>/g,
     (_, idx) => `<span class="citation-badge">${idx}</span>`
@@ -166,10 +153,8 @@ function UserAvatar() {
   );
 }
 
-function Chat() {
-  const { instance, accounts } = useMsal();
-  const account = accounts[0];
-  const userId = account?.localAccountId || "anonymous";
+function Chat({ token, email, onSignOut }) {
+  const userId = email;
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -178,19 +163,6 @@ function Chat() {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
-
-  const acquireToken = useCallback(async () => {
-    try {
-      const response = await instance.acquireTokenSilent({
-        ...loginRequest,
-        account,
-      });
-      return response.idToken;
-    } catch {
-      instance.acquireTokenRedirect(loginRequest);
-      return null;
-    }
-  }, [instance, account]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -224,13 +196,12 @@ function Chat() {
     abortRef.current = controller;
 
     try {
-      const accessToken = await acquireToken();
       const result = await streamMessage(
         updatedMessages,
         userId,
         (accumulated) => setStreamingContent(accumulated),
         controller.signal,
-        accessToken
+        token
       );
       setMessages((prev) => [
         ...prev,
@@ -238,7 +209,6 @@ function Chat() {
       ]);
     } catch (err) {
       if (err.name === "AbortError") {
-        // User stopped generation — keep partial content as message
         if (streamingContent) {
           setMessages((prev) => [
             ...prev,
@@ -278,10 +248,6 @@ function Chat() {
     setLoading(false);
   };
 
-  const handleSignOut = () => {
-    instance.logoutRedirect().catch((e) => console.error("Logout failed:", e));
-  };
-
   return (
     <div className="chat-container">
       {/* Header */}
@@ -301,7 +267,7 @@ function Chat() {
             </svg>
             <span>New chat</span>
           </button>
-          <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">
+          <button className="sign-out-btn" onClick={onSignOut} title="Sign out">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
@@ -322,7 +288,7 @@ function Chat() {
               </svg>
             </div>
             <h2>How can I help you today?</h2>
-            <p>Ask me anything about any  topic I can assist with.</p>
+            <p>Ask me anything about any topic I can assist with.</p>
           </div>
         )}
 

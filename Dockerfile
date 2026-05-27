@@ -6,10 +6,10 @@ COPY chat-app/package.json chat-app/package-lock.json* ./
 RUN npm install
 COPY chat-app/ ./
 
-ARG REACT_APP_AZURE_CLIENT_ID
-ARG REACT_APP_AZURE_TENANT_ID
-ENV REACT_APP_AZURE_CLIENT_ID=$REACT_APP_AZURE_CLIENT_ID
-ENV REACT_APP_AZURE_TENANT_ID=$REACT_APP_AZURE_TENANT_ID
+ARG VITE_CLIENT_ID
+ARG VITE_TENANT_ID
+ENV VITE_CLIENT_ID=$VITE_CLIENT_ID
+ENV VITE_TENANT_ID=$VITE_TENANT_ID
 
 RUN npm run build
 
@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY pythonbackend/ ./
 
 # Copy React build from stage 1
-COPY --from=frontend-build /app/chat-app/build /app/static-build
+COPY --from=frontend-build /app/chat-app/dist /app/static-build
 
 # Set environment variable for static build path
 ENV STATIC_BUILD_DIR=/app/static-build
