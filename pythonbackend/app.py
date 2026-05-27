@@ -7,6 +7,7 @@ from flask_cors import CORS
 from azure.core.credentials import AccessToken, TokenCredential
 from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
 from azure.ai.projects import AIProjectClient
+from openai import AuthenticationError as OpenAIAuthError, RateLimitError, BadRequestError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -135,9 +136,16 @@ def chat():
         reply = sanitize_markdown(response.output_text)
         annotations = _extract_annotations(response)
         return jsonify({"reply": reply, "annotations": annotations})
-    except ClientAuthenticationError as e:
-        logger.error("Azure auth failed: %s", e.message)
-        return jsonify({"error": "Authentication failed — token may be expired or lack permissions", "code": "AUTH_FAILED"}), 401
+    except (ClientAuthenticationError, OpenAIAuthError) as e:
+        msg = getattr(e, 'message', str(e))
+        logger.error("Auth failed: %s", msg)
+        return jsonify({"error": "Session expired — please sign out and sign in again.", "code": "AUTH_FAILED"}), 401
+    except RateLimitError as e:
+        logger.warning("Rate limited: %s", e)
+        return jsonify({"error": "Rate limit exceeded. Please wait a moment and try again.", "code": "RATE_LIMITED"}), 429
+    except BadRequestError as e:
+        logger.error("Bad request to upstream: %s", e)
+        return jsonify({"error": "Invalid request — please try rephrasing your message.", "code": "BAD_REQUEST"}), 400
     except HttpResponseError as e:
         logger.error("Azure API error [%s]: %s", e.status_code, e.message)
         return jsonify({"error": e.message, "code": "UPSTREAM_ERROR", "status": e.status_code}), 502
@@ -194,9 +202,15 @@ def chat_stream():
             final = sanitize_markdown(full_text)
             yield f"data: {json.dumps({'delta': final, 'replace': True, 'done': True, 'annotations': annotations})}\n\n"
             yield "data: [DONE]\n\n"
-        except ClientAuthenticationError as e:
-            logger.error("Azure auth failed during stream: %s", e.message)
-            yield f"data: {json.dumps({'error': 'Authentication failed — token may be expired', 'code': 'AUTH_FAILED'})}\n\n"
+        except (ClientAuthenticationError, OpenAIAuthError) as e:
+            logger.error("Auth failed during stream: %s", e)
+            yield f"data: {json.dumps({'error': 'Session expired — please sign out and sign in again.', 'code': 'AUTH_FAILED'})}\n\n"
+        except RateLimitError as e:
+            logger.warning("Rate limited during stream: %s", e)
+            yield f"data: {json.dumps({'error': 'Rate limit exceeded. Please wait a moment and try again.', 'code': 'RATE_LIMITED'})}\n\n"
+        except BadRequestError as e:
+            logger.error("Bad request during stream: %s", e)
+            yield f"data: {json.dumps({'error': 'Invalid request — please try rephrasing your message.', 'code': 'BAD_REQUEST'})}\n\n"
         except HttpResponseError as e:
             logger.error("Azure API error during stream [%s]: %s", e.status_code, e.message)
             yield f"data: {json.dumps({'error': e.message, 'code': 'UPSTREAM_ERROR'})}\n\n"

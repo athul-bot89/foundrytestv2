@@ -5,12 +5,6 @@ WORKDIR /app/chat-app
 COPY chat-app/package.json chat-app/package-lock.json* ./
 RUN npm install
 COPY chat-app/ ./
-
-ARG VITE_CLIENT_ID
-ARG VITE_TENANT_ID
-ENV VITE_CLIENT_ID=$VITE_CLIENT_ID
-ENV VITE_TENANT_ID=$VITE_TENANT_ID
-
 RUN npm run build
 
 # Stage 2: Production image with Flask backend
@@ -28,11 +22,20 @@ COPY pythonbackend/ ./
 # Copy React build from stage 1
 COPY --from=frontend-build /app/chat-app/dist /app/static-build
 
+# Copy entrypoint script (generates auth-config.js at runtime from env vars)
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 # Set environment variable for static build path
 ENV STATIC_BUILD_DIR=/app/static-build
-
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 3000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--worker-class", "gevent", "--workers", "4", "--timeout", "120", "app:app"]
+# All config is injected at runtime via environment variables:
+#   CLIENT_ID       - Azure Entra App Registration client ID
+#   TENANT_ID       - Azure Entra tenant ID
+#   AZURE_ENDPOINT  - Azure AI project endpoint
+#   AGENT_NAME      - Agent name
+#   AGENT_VERSION   - Agent version
+ENTRYPOINT ["./entrypoint.sh"]
