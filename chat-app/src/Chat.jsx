@@ -153,8 +153,8 @@ function UserAvatar() {
   );
 }
 
-function Chat({ token, email, onSignOut }) {
-  const userId = email;
+function Chat() {
+  const [userId] = useState(() => crypto.randomUUID());
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -202,8 +202,7 @@ function Chat({ token, email, onSignOut }) {
         updatedMessages,
         userId,
         (accumulated) => setStreamingContent(accumulated),
-        controller.signal,
-        token
+        controller.signal
       );
       setMessages((prev) => [
         ...prev,
@@ -218,18 +217,10 @@ function Chat({ token, email, onSignOut }) {
           ]);
         }
       } else {
-        const isAuth = err.code === "AUTH_FAILED" || err.code === "AUTH_MISSING" || err.status === 401;
-        if (isAuth) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "error", content: "Session expired. Please sign out and sign in again." },
-          ]);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "error", content: `Error: ${err.message}` },
-          ]);
-        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "error", content: `Error: ${err.message}` },
+        ]);
         console.error(`[Chat] ${err.code || "ERROR"}:`, err.message);
       }
     } finally {
@@ -264,7 +255,7 @@ function Chat({ token, email, onSignOut }) {
   const handleFeedback = async (messageIndex, rating, content, messageId) => {
     setFeedbackGiven((prev) => ({ ...prev, [messageIndex]: rating }));
     try {
-      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "");
+      await sendFeedback(messageIndex, rating, content, userId, threadIdRef.current, messageId || "");
     } catch (err) {
       console.error("[Feedback] Failed to send:", err.message);
     }
@@ -288,14 +279,6 @@ function Chat({ token, email, onSignOut }) {
               <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
             <span>New chat</span>
-          </button>
-          <button className="sign-out-btn" onClick={onSignOut} title="Sign out">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            <span>Sign out</span>
           </button>
         </div>
       </div>

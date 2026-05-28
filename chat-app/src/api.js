@@ -7,12 +7,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function sendMessage(messages, userId, accessToken) {
+export async function sendMessage(messages, userId) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ messages, userId }),
   });
@@ -39,12 +38,11 @@ export async function sendMessage(messages, userId, accessToken) {
  * @param {AbortSignal} signal - AbortController signal to cancel the stream
  * @returns {Promise<string>} The full accumulated response text
  */
-export async function streamMessage(messages, userId, onDelta, signal, accessToken) {
+export async function streamMessage(messages, userId, onDelta, signal) {
   const res = await fetch("/api/chat/stream", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ messages, userId }),
     signal,
@@ -107,17 +105,15 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
  * @param {string} rating - "like" or "dislike"
  * @param {string} messageContent - The message content (will be truncated server-side)
  * @param {string} userId - The user ID
- * @param {string} accessToken - Bearer token
  * @param {string} threadId - The conversation thread ID
  * @param {string} messageId - The backend message ID
  * @returns {Promise<object>}
  */
-export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId) {
+export async function sendFeedback(messageIndex, rating, messageContent, userId, threadId, messageId) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId }),
   });

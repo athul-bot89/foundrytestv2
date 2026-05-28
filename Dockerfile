@@ -22,7 +22,7 @@ COPY pythonbackend/ ./
 # Copy React build from stage 1
 COPY --from=frontend-build /app/chat-app/dist /app/static-build
 
-# Copy entrypoint script (generates auth-config.js at runtime from env vars)
+# Copy entrypoint script
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
@@ -33,9 +33,10 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 3000
 
 # All config is injected at runtime via environment variables:
-#   CLIENT_ID       - Azure Entra App Registration client ID
-#   TENANT_ID       - Azure Entra tenant ID
-#   AZURE_ENDPOINT  - Azure AI project endpoint
-#   AGENT_NAME      - Agent name
-#   AGENT_VERSION   - Agent version
+#   CLIENT_ID           - Service principal client ID
+#   TENANT_ID           - Azure Entra tenant ID
+#   AZURE_CLIENT_SECRET - Service principal client secret
+#   AZURE_ENDPOINT      - Azure AI project endpoint
+#   AGENT_NAME          - Agent name
+#   AGENT_VERSION       - Agent version
 ENTRYPOINT ["./entrypoint.sh"]

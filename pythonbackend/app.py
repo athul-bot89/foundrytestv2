@@ -4,8 +4,8 @@ import json
 import logging
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
-from azure.core.credentials import AccessToken, TokenCredential
 from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
+from azure.identity import ClientSecretCredential
 from azure.ai.projects import AIProjectClient
 from openai import AuthenticationError as OpenAIAuthError, RateLimitError, BadRequestError
 from dotenv import load_dotenv
@@ -25,22 +25,6 @@ STATIC_BUILD_DIR = os.environ.get(
     os.path.join(os.path.dirname(__file__), "..", "chat-app", "dist"),
 )
 
-# Generate auth-config.js from runtime env vars (backup for when entrypoint.sh is bypassed)
-_client_id = os.environ.get("CLIENT_ID", "")
-_tenant_id = os.environ.get("TENANT_ID", "")
-if _client_id and _tenant_id:
-    _auth_config_path = os.path.join(STATIC_BUILD_DIR, "auth-config.js")
-    try:
-        with open(_auth_config_path, "w") as f:
-            f.write(f'window.__AUTH_CONFIG__ = {{\n')
-            f.write(f'  clientId: "{_client_id}",\n')
-            f.write(f'  tenantId: "{_tenant_id}",\n')
-            f.write(f'  scopes: ["https://ai.azure.com/.default"]\n')
-            f.write(f'}};\n')
-        logger.info("Generated auth-config.js with CLIENT_ID and TENANT_ID")
-    except OSError as e:
-        logger.warning(f"Could not write auth-config.js: {e}")
-
 app = Flask(__name__, static_folder=os.path.join(STATIC_BUILD_DIR, "static"), static_url_path="/static")
 CORS(app)
 
@@ -48,28 +32,13 @@ endpoint = os.environ.get("AZURE_ENDPOINT")
 agent_name = os.environ.get("AGENT_NAME")
 agent_version = os.environ.get("AGENT_VERSION")
 
-
-class UserTokenCredential(TokenCredential):
-    """Wraps a user's access token to satisfy the TokenCredential interface."""
-    def __init__(self, token: str):
-        self._token = token
-
-    def get_token(self, *scopes, **kwargs):
-        return AccessToken(self._token, 0)
-
-
-def _get_bearer_token():
-    """Extract Bearer token from the Authorization header."""
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return None
-    return auth_header[7:]
-
-
-def _get_project_client_for_token(token: str):
-    """Create an AIProjectClient using the user's access token."""
-    credential = UserTokenCredential(token)
-    return AIProjectClient(endpoint=endpoint, credential=credential)
+# Authenticate using client credentials from environment variables
+_credential = ClientSecretCredential(
+    tenant_id=os.environ.get("TENANT_ID", ""),
+    client_id=os.environ.get("CLIENT_ID", ""),
+    client_secret=os.environ.get("AZURE_CLIENT_SECRET", ""),
+)
+project_client = AIProjectClient(endpoint=endpoint, credential=_credential)
 
 @app.route("/health")
 def health():
@@ -124,16 +93,12 @@ def _extract_annotations(response):
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    token = _get_bearer_token()
-    if not token:
-        logger.warning("Chat request missing Authorization header")
-        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
             return jsonify({"error": "Request body must include 'messages'", "code": "BAD_REQUEST"}), 400
         messages = data.get("messages", [])
-        openai_client = _get_project_client_for_token(token).get_openai_client()
+        openai_client = project_client.get_openai_client()
 
         response = openai_client.responses.create(
             input=[
@@ -156,7 +121,7 @@ def chat():
     except (ClientAuthenticationError, OpenAIAuthError) as e:
         msg = getattr(e, 'message', str(e))
         logger.error("Auth failed: %s", msg)
-        return jsonify({"error": "Session expired — please sign out and sign in again.", "code": "AUTH_FAILED"}), 401
+        return jsonify({"error": "Authentication failed. Check backend credentials.", "code": "AUTH_FAILED"}), 401
     except RateLimitError as e:
         logger.warning("Rate limited: %s", e)
         return jsonify({"error": "Rate limit exceeded. Please wait a moment and try again.", "code": "RATE_LIMITED"}), 429
@@ -174,10 +139,6 @@ def chat():
 @app.route("/api/chat/stream", methods=["POST"])
 def chat_stream():
     """SSE streaming endpoint for real-time token-by-token responses."""
-    token = _get_bearer_token()
-    if not token:
-        logger.warning("Stream request missing Authorization header")
-        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
@@ -189,7 +150,7 @@ def chat_stream():
 
     def generate():
         try:
-            openai_client = _get_project_client_for_token(token).get_openai_client()
+            openai_client = project_client.get_openai_client()
             stream = openai_client.responses.create(
                 input=[
                     {"role": msg["role"], "content": msg["content"]}
@@ -223,7 +184,7 @@ def chat_stream():
             yield "data: [DONE]\n\n"
         except (ClientAuthenticationError, OpenAIAuthError) as e:
             logger.error("Auth failed during stream: %s", e)
-            yield f"data: {json.dumps({'error': 'Session expired — please sign out and sign in again.', 'code': 'AUTH_FAILED'})}\n\n"
+            yield f"data: {json.dumps({'error': 'Authentication failed. Check backend credentials.', 'code': 'AUTH_FAILED'})}\n\n"
         except RateLimitError as e:
             logger.warning("Rate limited during stream: %s", e)
             yield f"data: {json.dumps({'error': 'Rate limit exceeded. Please wait a moment and try again.', 'code': 'RATE_LIMITED'})}\n\n"
@@ -246,9 +207,6 @@ def chat_stream():
 @app.route("/api/feedback", methods=["POST"])
 def feedback():
     """Log user feedback (like/dislike) for a chat message."""
-    token = _get_bearer_token()
-    if not token:
-        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
     try:
         data = request.get_json()
         if not data or "rating" not in data:
