@@ -51,23 +51,17 @@ function App() {
       <div className="auth-container">
         <div className="auth-card">
           <div className="auth-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z"
-                fill="currentColor"
-              />
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" fill="currentColor"/>
             </svg>
           </div>
-          <h2>Agent Chat</h2>
-          <p>Sign in with your organization account to continue.</p>
-          <button className="ms-login-btn" onClick={connect}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 21 21">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+          <h2></h2>
+          
+          <button className="start-chat-btn" onClick={connect}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
-            Sign in with Microsoft
+            Start Chat
           </button>
         </div>
       </div>

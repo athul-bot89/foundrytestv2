@@ -45,17 +45,24 @@ body {
 
 .auth-icon {
   color: #667eea;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 
 .auth-card h2 {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   color: #1a1a1a;
   margin-bottom: 8px;
+  font-weight: 700;
 }
 
 .auth-card p {
-  color: #666;
+  color: #888;
   margin-bottom: 32px;
   font-size: 0.95rem;
 }
@@ -79,6 +86,32 @@ body {
 .ms-login-btn:hover {
   border-color: #0078d4;
   box-shadow: 0 4px 12px rgba(0, 120, 212, 0.15);
+}
+
+.start-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 36px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 50px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.start-chat-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.start-chat-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.4);
 }
 
 /* Header right buttons */
