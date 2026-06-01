@@ -21,10 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Application Insights telemetry logger
-APPINSIGHTS_CONNECTION_STRING = os.environ.get(
-    "APPLICATIONINSIGHTS_CONNECTION_STRING",
-    "InstrumentationKey=22af0d01-6c49-4388-8da2-693a981c78b5;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/;LiveEndpoint=https://eastus.livediagnostics.monitor.azure.com/;ApplicationId=69657a6f-d511-4cb6-906c-7890aa30b648"
-)
+APPINSIGHTS_CONNECTION_STRING = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
 telemetry_logger = logging.getLogger("telemetry")
 telemetry_logger.setLevel(logging.INFO)
 if APPINSIGHTS_CONNECTION_STRING:
