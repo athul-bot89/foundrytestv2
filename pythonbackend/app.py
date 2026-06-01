@@ -25,9 +25,12 @@ APPINSIGHTS_CONNECTION_STRING = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_S
 telemetry_logger = logging.getLogger("telemetry")
 telemetry_logger.setLevel(logging.INFO)
 if APPINSIGHTS_CONNECTION_STRING:
-    telemetry_logger.addHandler(
-        AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
-    )
+    try:
+        telemetry_logger.addHandler(
+            AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+        )
+    except ValueError as e:
+        logger.warning(f"Failed to initialize Application Insights: {e}")
 
 # In Docker, React build is copied to /app/static-build
 # Locally, fall back to ../chat-app/dist
