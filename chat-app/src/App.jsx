@@ -41,7 +41,7 @@ function App() {
   if (token && email) {
     return (
       <div className="App">
-        <Chat token={token} email={email} onSignOut={handleSignOut} />
+        <Chat token={token} email={email} />
       </div>
     );
   }
