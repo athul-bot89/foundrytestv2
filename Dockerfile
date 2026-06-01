@@ -38,4 +38,5 @@ EXPOSE 3000
 #   AZURE_ENDPOINT  - Azure AI project endpoint
 #   AGENT_NAME      - Agent name
 #   AGENT_VERSION   - Agent version
+#   APPLICATIONINSIGHTS_CONNECTION_STRING - Application Insights connection string
 ENTRYPOINT ["./entrypoint.sh"]

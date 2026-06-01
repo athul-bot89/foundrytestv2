@@ -2,6 +2,7 @@ import os
 import re
 import json
 import logging
+import jwt
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from azure.core.credentials import AccessToken, TokenCredential
@@ -9,6 +10,7 @@ from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
 from azure.ai.projects import AIProjectClient
 from openai import AuthenticationError as OpenAIAuthError, RateLimitError, BadRequestError
 from dotenv import load_dotenv
+from opencensus.ext.azure.log_exporter import AzureLogHandler
 
 load_dotenv()
 
@@ -17,6 +19,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Application Insights telemetry logger
+APPINSIGHTS_CONNECTION_STRING = os.environ.get(
+    "APPLICATIONINSIGHTS_CONNECTION_STRING",
+    "InstrumentationKey=22af0d01-6c49-4388-8da2-693a981c78b5;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/;LiveEndpoint=https://eastus.livediagnostics.monitor.azure.com/;ApplicationId=69657a6f-d511-4cb6-906c-7890aa30b648"
+)
+telemetry_logger = logging.getLogger("telemetry")
+telemetry_logger.setLevel(logging.INFO)
+if APPINSIGHTS_CONNECTION_STRING:
+    telemetry_logger.addHandler(
+        AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+    )
 
 # In Docker, React build is copied to /app/static-build
 # Locally, fall back to ../chat-app/dist
@@ -64,6 +78,50 @@ def _get_bearer_token():
     if not auth_header.startswith("Bearer "):
         return None
     return auth_header[7:]
+
+
+def _get_user_email_from_token(token: str) -> str:
+    """Decode JWT token (without verification) to extract user email."""
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+        return claims.get("preferred_username") or claims.get("email") or claims.get("upn", "unknown")
+    except Exception:
+        return "unknown"
+
+
+def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens):
+    """Log consumption event to Application Insights."""
+    telemetry_logger.info(
+        "Consumption",
+        extra={
+            "custom_dimensions": {
+                "event_type": "Consumption",
+                "agent_id": agent_id or "",
+                "thread_id": thread_id or "",
+                "user_email": user_email or "",
+                "completion_tokens": str(completion_tokens or 0),
+                "prompt_tokens": str(prompt_tokens or 0),
+            }
+        },
+    )
+
+
+def track_feedback(agent_id, thread_id, user_email, last_agent_msg, last_user_msg, feedback):
+    """Log feedback event to Application Insights."""
+    telemetry_logger.info(
+        "Feedback",
+        extra={
+            "custom_dimensions": {
+                "event_type": "Feedback",
+                "agent_id": agent_id or "",
+                "thread_id": thread_id or "",
+                "user_email": user_email or "",
+                "last_agent_msg": (last_agent_msg or "")[:500],
+                "last_user_msg": (last_user_msg or "")[:500],
+                "feedback": feedback or "",
+            }
+        },
+    )
 
 
 def _get_project_client_for_token(token: str):
@@ -152,6 +210,21 @@ def chat():
         reply = sanitize_markdown(response.output_text)
         annotations = _extract_annotations(response)
         message_id = getattr(response, "id", None) or ""
+
+        # Track consumption in Application Insights
+        user_email = _get_user_email_from_token(token)
+        thread_id = data.get("threadId", "")
+        usage = getattr(response, "usage", None)
+        completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+        prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+        track_consumption(
+            agent_id=agent_name,
+            thread_id=thread_id,
+            user_email=user_email,
+            completion_tokens=completion_tokens,
+            prompt_tokens=prompt_tokens,
+        )
+
         return jsonify({"reply": reply, "annotations": annotations, "messageId": message_id})
     except (ClientAuthenticationError, OpenAIAuthError) as e:
         msg = getattr(e, 'message', str(e))
@@ -216,6 +289,19 @@ def chat_stream():
                     if hasattr(event, "response"):
                         annotations = _extract_annotations(event.response)
                         message_id = getattr(event.response, "id", None) or ""
+                        # Track consumption in Application Insights
+                        user_email = _get_user_email_from_token(token)
+                        thread_id = data.get("threadId", "")
+                        usage = getattr(event.response, "usage", None)
+                        completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+                        prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+                        track_consumption(
+                            agent_id=agent_name,
+                            thread_id=thread_id,
+                            user_email=user_email,
+                            completion_tokens=completion_tokens,
+                            prompt_tokens=prompt_tokens,
+                        )
                     break
             # Send final sanitized full text as a replace to fix markdown
             final = sanitize_markdown(full_text)
@@ -260,6 +346,8 @@ def feedback():
         user_id = data.get("userId", "unknown")
         thread_id = data.get("threadId", "")
         message_id = data.get("messageId", "")
+        last_user_msg = data.get("lastUserMsg", "")
+        last_agent_msg = data.get("lastAgentMsg", "")
 
         logger.info(
             "FEEDBACK | user=%s | threadId=%s | messageId=%s | messageIndex=%s | rating=%s | content=%s",
@@ -270,6 +358,18 @@ def feedback():
             rating,
             message_content,
         )
+
+        # Track feedback in Application Insights
+        user_email = _get_user_email_from_token(token)
+        track_feedback(
+            agent_id=agent_name,
+            thread_id=thread_id,
+            user_email=user_email,
+            last_agent_msg=last_agent_msg or message_content,
+            last_user_msg=last_user_msg,
+            feedback=rating,
+        )
+
         return jsonify({"status": "ok"})
     except Exception as e:
         logger.exception("Unexpected error in /api/feedback")

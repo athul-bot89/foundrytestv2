@@ -8,3 +8,4 @@ gunicorn
 gevent
 PyJWT[crypto]
 requests
+opencensus-ext-azure

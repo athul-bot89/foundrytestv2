@@ -39,14 +39,14 @@ export async function sendMessage(messages, userId, accessToken) {
  * @param {AbortSignal} signal - AbortController signal to cancel the stream
  * @returns {Promise<string>} The full accumulated response text
  */
-export async function streamMessage(messages, userId, onDelta, signal, accessToken) {
+export async function streamMessage(messages, userId, onDelta, signal, accessToken, threadId) {
   const res = await fetch("/api/chat/stream", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ messages, userId }),
+    body: JSON.stringify({ messages, userId, threadId }),
     signal,
   });
 
@@ -112,14 +112,14 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
  * @param {string} messageId - The backend message ID
  * @returns {Promise<object>}
  */
-export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId) {
+export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId, lastUserMsg, lastAgentMsg) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId }),
+    body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId, lastUserMsg, lastAgentMsg }),
   });
 
   if (!res.ok) {

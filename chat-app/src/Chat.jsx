@@ -210,7 +210,8 @@ function Chat({ token, email }) {
         userId,
         (accumulated) => setStreamingContent(accumulated),
         controller.signal,
-        token
+        token,
+        threadIdRef.current
       );
       setMessages((prev) => [
         ...prev,
@@ -270,8 +271,16 @@ function Chat({ token, email }) {
 
   const handleFeedback = async (messageIndex, rating, content, messageId) => {
     setFeedbackGiven((prev) => ({ ...prev, [messageIndex]: rating }));
+    // Find the last user message before this agent message
+    let lastUserMsg = "";
+    for (let i = messageIndex - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        lastUserMsg = messages[i].content;
+        break;
+      }
+    }
     try {
-      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "");
+      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "", lastUserMsg, content);
     } catch (err) {
       console.error("[Feedback] Failed to send:", err.message);
     }
