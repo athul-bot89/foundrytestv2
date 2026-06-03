@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
-import Chat from "./Chat";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import "./App.css";
+
+const Chat = lazy(() => import("./Chat"));
 
 function App() {
   const [email, setEmail] = useState("");
@@ -41,7 +42,9 @@ function App() {
   if (token && email) {
     return (
       <div className="App">
-        <Chat token={token} email={email} />
+        <Suspense fallback={<div className="auth-loading">Loading chat...</div>}>
+          <Chat token={token} email={email} />
+        </Suspense>
       </div>
     );
   }

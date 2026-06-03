@@ -17,5 +17,13 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          markdown: ["react-markdown", "rehype-raw", "remark-gfm"],
+        },
+      },
+    },
   },
 });
