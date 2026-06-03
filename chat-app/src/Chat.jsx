@@ -68,6 +68,9 @@ function MessageContent({ content, role, annotations }) {
   //   (_, idx) => `<span class="citation-badge">${idx}</span>`
   // );
 
+  // Strip citation markers like 【6:0†source】 from displayed text
+  const displayContent = content.replace(/【[^】]*?†[^】]*?】/g, "");
+
   return (
     <>
       <ReactMarkdown
@@ -79,7 +82,7 @@ function MessageContent({ content, role, annotations }) {
           ),
         }}
       >
-        {content}
+        {displayContent}
       </ReactMarkdown>
       {/* Citations section - commented out for potential future use
       {citations.length > 0 && (
