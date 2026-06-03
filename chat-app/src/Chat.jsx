@@ -329,7 +329,7 @@ function Chat({ token, email }) {
               </svg>
             </div>
             <h2>How can I help you today?</h2>
-            <p>ask me anything about the company policies</p>
+            <p>Ask me anything about the company policies.</p>
           </div>
         )}
 
