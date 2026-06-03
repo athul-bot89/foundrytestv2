@@ -284,8 +284,13 @@ function Chat({ token, email }) {
         break;
       }
     }
+    // Build full conversation string
+    const conversation = messages
+      .slice(0, messageIndex + 1)
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n");
     try {
-      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "", lastUserMsg, content);
+      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "", lastUserMsg, content, conversation);
     } catch (err) {
       console.error("[Feedback] Failed to send:", err.message);
     }

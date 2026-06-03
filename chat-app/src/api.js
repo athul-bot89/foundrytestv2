@@ -112,14 +112,14 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
  * @param {string} messageId - The backend message ID
  * @returns {Promise<object>}
  */
-export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId, lastUserMsg, lastAgentMsg) {
+export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId, lastUserMsg, lastAgentMsg, conversation) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId, lastUserMsg, lastAgentMsg }),
+    body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId, lastUserMsg, lastAgentMsg, conversation }),
   });
 
   if (!res.ok) {

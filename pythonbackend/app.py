@@ -106,8 +106,15 @@ def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt
     )
 
 
-def track_feedback(agent_id, thread_id, user_email, last_agent_msg, last_user_msg, feedback):
+def track_feedback(agent_id, thread_id, user_email, last_agent_msg, last_user_msg, feedback, conversation):
     """Log feedback event to Application Insights."""
+    # Map like/dislike to positive/negative
+    feedback_mapped = feedback or ""
+    if feedback_mapped == "like":
+        feedback_mapped = "positive"
+    elif feedback_mapped == "dislike":
+        feedback_mapped = "negative"
+
     telemetry_logger.info(
         "Feedback",
         extra={
@@ -118,7 +125,8 @@ def track_feedback(agent_id, thread_id, user_email, last_agent_msg, last_user_ms
                 "user_email": user_email or "",
                 "last_agent_msg": (last_agent_msg or "")[:500],
                 "last_user_msg": (last_user_msg or "")[:500],
-                "feedback": feedback or "",
+                "feedback": feedback_mapped,
+                "full_conversation": (conversation or "")[:8000],
             }
         },
     )
@@ -348,6 +356,7 @@ def feedback():
         message_id = data.get("messageId", "")
         last_user_msg = data.get("lastUserMsg", "")
         last_agent_msg = data.get("lastAgentMsg", "")
+        conversation = data.get("conversation", "")
 
         logger.info(
             "FEEDBACK | user=%s | threadId=%s | messageId=%s | messageIndex=%s | rating=%s | content=%s",
@@ -368,6 +377,7 @@ def feedback():
             last_agent_msg=last_agent_msg or message_content,
             last_user_msg=last_user_msg,
             feedback=rating,
+            conversation=conversation,
         )
 
         return jsonify({"status": "ok"})
