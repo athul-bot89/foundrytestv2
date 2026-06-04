@@ -62,6 +62,11 @@ endpoint = os.environ.get("AZURE_ENDPOINT")
 agent_name = os.environ.get("AGENT_NAME")
 agent_version = os.environ.get("AGENT_VERSION")
 
+# Model and cost configuration
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o")
+COST_PER_PROMPT_TOKEN = float(os.environ.get("COST_PER_PROMPT_TOKEN", "0.0000025"))
+COST_PER_COMPLETION_TOKEN = float(os.environ.get("COST_PER_COMPLETION_TOKEN", "0.000010"))
+
 
 class UserTokenCredential(TokenCredential):
     """Wraps a user's access token to satisfy the TokenCredential interface."""
@@ -91,6 +96,9 @@ def _get_user_email_from_token(token: str) -> str:
 
 def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens):
     """Log consumption event to Application Insights."""
+    prompt_tok = int(prompt_tokens or 0)
+    completion_tok = int(completion_tokens or 0)
+    cost = (prompt_tok * COST_PER_PROMPT_TOKEN) + (completion_tok * COST_PER_COMPLETION_TOKEN)
     telemetry_logger.info(
         "Consumption",
         extra={
@@ -99,8 +107,10 @@ def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt
                 "agent_id": agent_id or "",
                 "thread_id": thread_id or "",
                 "user_email": user_email or "",
-                "completion_tokens": str(completion_tokens or 0),
-                "prompt_tokens": str(prompt_tokens or 0),
+                "completion_tokens": str(completion_tok),
+                "prompt_tokens": str(prompt_tok),
+                "model_name": MODEL_NAME,
+                "cost": str(round(cost, 10)),
             }
         },
     )
