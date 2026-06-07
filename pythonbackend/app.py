@@ -283,6 +283,10 @@ def chat_stream():
         logger.error("Failed to parse stream request body: %s", e)
         return jsonify({"error": "Invalid request body", "code": "BAD_REQUEST"}), 400
 
+    # Capture request context values before entering the generator
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr
+
     def generate():
         try:
             openai_client = _get_project_client_for_token(token).get_openai_client()
@@ -318,8 +322,6 @@ def chat_stream():
                         usage = getattr(event.response, "usage", None)
                         completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
                         prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
-                        forwarded_for = request.headers.get("X-Forwarded-For", "")
-                        client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr
                         track_consumption(
                             agent_id=agent_name,
                             thread_id=thread_id,
