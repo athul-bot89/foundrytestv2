@@ -54,7 +54,9 @@
                 storeAuthStateInCookie: true
             },
             system: {
-                allowRedirectInIframe: false
+                allowRedirectInIframe: false,
+                redirectNavigationTimeout: 30000,
+                iframeHashTimeout: 10000
             }
         };
 
@@ -64,15 +66,16 @@
 
             try {
                 // Handle the redirect response (if returning from Azure AD)
-                await msal.handleRedirectPromise();
+                const redirectResponse = await msal.handleRedirectPromise();
 
                 // Check if user is already logged in
                 const accounts = msal.getAllAccounts();
+                const account = redirectResponse?.account || accounts[0];
 
-                if (accounts.length) {
+                if (account) {
                     // Get an access token silently
                     const tokenResponse = await msal.acquireTokenSilent({
-                        account: accounts[0],
+                        account: account,
                         scopes: config.scopes
                     });
 
@@ -81,7 +84,7 @@
                         window.opener.postMessage(
                             {
                                 type: "AUTH",
-                                email: accounts[0].username,
+                                email: account.username,
                                 token: tokenResponse.accessToken
                             },
                             window.location.origin
@@ -99,6 +102,20 @@
                 });
             } catch (e) {
                 console.error("Auth error:", e);
+
+                // On timeout, retry once with a fresh redirect
+                if (e.errorCode === "timed_out") {
+                    document.querySelector(".auth-status p").textContent = "Retrying sign-in...";
+                    try {
+                        const msal2 = new PublicClientApplication(msalConfig);
+                        await msal2.initialize();
+                        await msal2.loginRedirect({ scopes: config.scopes });
+                        return;
+                    } catch (retryErr) {
+                        console.error("Retry failed:", retryErr);
+                    }
+                }
+
                 document.querySelector(".auth-status h2").textContent = "Authentication failed";
                 document.querySelector(".auth-status p").textContent = e.message || "Please close this window and try again.";
                 document.querySelector(".spinner").style.display = "none";

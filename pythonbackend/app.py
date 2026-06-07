@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 APPINSIGHTS_CONNECTION_STRING = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
 telemetry_logger = logging.getLogger("telemetry")
 telemetry_logger.setLevel(logging.INFO)
-if APPINSIGHTS_CONNECTION_STRING:
+telemetry_logger.propagate = False
+if APPINSIGHTS_CONNECTION_STRING and not telemetry_logger.handlers:
     try:
         telemetry_logger.addHandler(
             AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
@@ -94,7 +95,7 @@ def _get_user_email_from_token(token: str) -> str:
         return "unknown"
 
 
-def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens):
+def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens, client_ip):
     """Log consumption event to Application Insights."""
     prompt_tok = int(prompt_tokens or 0)
     completion_tok = int(completion_tokens or 0)
@@ -111,6 +112,7 @@ def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt
                 "prompt_tokens": str(prompt_tok),
                 "model_name": MODEL_NAME,
                 "cost": str(round(cost, 10)),
+                "client_ip": client_ip or "",
             }
         },
     )
@@ -235,12 +237,15 @@ def chat():
         usage = getattr(response, "usage", None)
         completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
         prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr
         track_consumption(
             agent_id=agent_name,
             thread_id=thread_id,
             user_email=user_email,
             completion_tokens=completion_tokens,
             prompt_tokens=prompt_tokens,
+            client_ip=client_ip,
         )
 
         return jsonify({"reply": reply, "annotations": annotations, "messageId": message_id})
@@ -313,12 +318,15 @@ def chat_stream():
                         usage = getattr(event.response, "usage", None)
                         completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
                         prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+                        forwarded_for = request.headers.get("X-Forwarded-For", "")
+                        client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr
                         track_consumption(
                             agent_id=agent_name,
                             thread_id=thread_id,
                             user_email=user_email,
                             completion_tokens=completion_tokens,
                             prompt_tokens=prompt_tokens,
+                            client_ip=client_ip,
                         )
                     break
             # Send final sanitized full text as a replace to fix markdown
