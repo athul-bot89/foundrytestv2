@@ -25,11 +25,16 @@ APPINSIGHTS_CONNECTION_STRING = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_S
 telemetry_logger = logging.getLogger("telemetry")
 telemetry_logger.setLevel(logging.INFO)
 telemetry_logger.propagate = False
-if APPINSIGHTS_CONNECTION_STRING and not telemetry_logger.handlers:
+if APPINSIGHTS_CONNECTION_STRING:
     try:
-        telemetry_logger.addHandler(
-            AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
-        )
+        _ai_handler = AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+        # Send regular backend logs to Application Insights
+        logger.addHandler(_ai_handler)
+        # Dedicated telemetry logger
+        if not telemetry_logger.handlers:
+            telemetry_logger.addHandler(
+                AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+            )
     except ValueError as e:
         logger.warning(f"Failed to initialize Application Insights: {e}")
 
@@ -211,7 +216,7 @@ def chat():
         if not data or not data.get("messages"):
             return jsonify({"error": "Request body must include 'messages'", "code": "BAD_REQUEST"}), 400
         messages = data.get("messages", [])
-        openai_client = _get_project_client_for_token(token).get_openai_client()
+        openai_client = _get_project_client_for_token(token).get_openai_client(max_retries=0)
 
         response = openai_client.responses.create(
             input=[
@@ -289,7 +294,7 @@ def chat_stream():
 
     def generate():
         try:
-            openai_client = _get_project_client_for_token(token).get_openai_client()
+            openai_client = _get_project_client_for_token(token).get_openai_client(max_retries=0)
             stream = openai_client.responses.create(
                 input=[
                     {"role": msg["role"], "content": msg["content"]}
