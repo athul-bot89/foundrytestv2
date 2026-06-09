@@ -260,6 +260,7 @@ def chat():
             client_ip=client_ip,
         )
 
+        logger.info("POST /api/chat | user=%s | tokens=%d/%d", user_email, prompt_tokens, completion_tokens)
         return jsonify({"reply": reply, "annotations": annotations, "messageId": message_id})
     except (ClientAuthenticationError, OpenAIAuthError) as e:
         msg = getattr(e, 'message', str(e))
@@ -342,6 +343,7 @@ def chat_stream():
                             prompt_tokens=prompt_tokens,
                             client_ip=client_ip,
                         )
+                        logger.info("POST /api/chat/stream | user=%s | tokens=%d/%d", user_email, prompt_tokens, completion_tokens)
                     break
             # Send final sanitized full text as a replace to fix markdown
             final = sanitize_markdown(full_text)
