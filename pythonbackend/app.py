@@ -28,13 +28,20 @@ telemetry_logger.propagate = False
 if APPINSIGHTS_CONNECTION_STRING:
     try:
         _ai_handler = AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+        _ai_handler.add_telemetry_processor(
+            lambda envelope: envelope.tags.update({"ai.cloud.role": "foundrytestv2-backend"})
+            or True
+        )
         # Send regular backend logs to Application Insights
         logger.addHandler(_ai_handler)
         # Dedicated telemetry logger
         if not telemetry_logger.handlers:
-            telemetry_logger.addHandler(
-                AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+            _telemetry_handler = AzureLogHandler(connection_string=APPINSIGHTS_CONNECTION_STRING)
+            _telemetry_handler.add_telemetry_processor(
+                lambda envelope: envelope.tags.update({"ai.cloud.role": "foundrytestv2-backend"})
+                or True
             )
+            telemetry_logger.addHandler(_telemetry_handler)
     except ValueError as e:
         logger.warning(f"Failed to initialize Application Insights: {e}")
 
