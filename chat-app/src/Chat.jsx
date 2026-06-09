@@ -232,10 +232,16 @@ function Chat({ token, email }) {
         }
       } else {
         const isAuth = err.code === "AUTH_FAILED" || err.code === "AUTH_MISSING" || err.status === 401;
+        const isRateLimit = err.code === "RATE_LIMITED" || err.status === 429;
         if (isAuth) {
           setMessages((prev) => [
             ...prev,
             { role: "error", content: "Session expired. Please sign out and sign in again." },
+          ]);
+        } else if (isRateLimit) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "error", content: "⚠️ Token rate limit exceeded. Please wait 60 seconds before sending another message." },
           ]);
         } else {
           setMessages((prev) => [

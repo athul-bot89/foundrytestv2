@@ -1,0 +1,81 @@
+<policies>
+    <inbound>
+        <base />
+        <validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized. Token is invalid or expired." require-expiration-time="true" require-signed-tokens="true">
+            <openid-config url="https://login.microsoftonline.com/b678434e-f26d-4d7f-947b-204156adc399/v2.0/.well-known/openid-configuration" />
+            <audiences>
+                <audience>https://ai.azure.com</audience>
+            </audiences>
+            <issuers>
+                <issuer>https://sts.windows.net/b678434e-f26d-4d7f-947b-204156adc399/</issuer>
+                <issuer>https://login.microsoftonline.com/b678434e-f26d-4d7f-947b-204156adc399/v2.0</issuer>
+            </issuers>
+        </validate-jwt>
+        <set-variable name="jwt-sub" value="@(context.Request.Headers.GetValueOrDefault("Authorization","").Split(' ').Last().AsJwt()?.Subject ?? "anonymous")" />
+        <set-variable name="token-limits-raw" value="{{token-limits-config}}" />
+        <set-variable name="token-limit" value="@{
+            var jwt = context.Request.Headers.GetValueOrDefault("Authorization","").Split(' ').Last().AsJwt();
+            var config = JObject.Parse((string)context.Variables["token-limits-raw"]);
+            var defaultLimit = config["default"]?.Value<int>() ?? 300;
+            if (jwt == null) {
+                return defaultLimit.ToString();
+            }
+            var groups = jwt.Claims.GetValueOrDefault("groups", "");
+            var maxLimit = defaultLimit;
+            foreach (var prop in config.Properties()) {
+                if (prop.Name != "default" && groups.Contains(prop.Name)) {
+                    var limit = prop.Value.Value<int>();
+                    if (limit > maxLimit) {
+                        maxLimit = limit;
+                    }
+                }
+            }
+            return maxLimit.ToString();
+        }" />
+        <cache-lookup-value key="@("token-usage-" + (string)context.Variables["jwt-sub"])" variable-name="tokenCount" default-value="0" />
+        <choose>
+            <when condition="@(int.Parse((string)context.Variables["tokenCount"]) >= int.Parse((string)context.Variables["token-limit"]))">
+                <return-response>
+                    <set-status code="429" reason="Too Many Requests" />
+                    <set-header name="Content-Type" exists-action="override">
+                        <value>application/json</value>
+                    </set-header>
+                    <set-header name="Retry-After" exists-action="override">
+                        <value>60</value>
+                    </set-header>
+                    <set-body>@{
+                        var used = (string)context.Variables["tokenCount"];
+                        var limit = (string)context.Variables["token-limit"];
+                        return "{\"error\": \"Token rate limit exceeded. Used: " + used + "/" + limit + " tokens per minute. Please wait and try again.\"}";
+                    }</set-body>
+                </return-response>
+            </when>
+        </choose>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+        <set-variable name="response-body" value="@(context.Response.Body.As<string>(preserveContent: true))" />
+        <set-variable name="total-tokens" value="@{
+            try {
+                var body = (string)context.Variables["response-body"];
+                var json = JObject.Parse(body);
+                var usage = json["usage"];
+                if (usage != null && usage["total_tokens"] != null) {
+                    return usage["total_tokens"].ToString();
+                }
+                return "0";
+            } catch {
+                return "0";
+            }
+        }" />
+        <cache-lookup-value key="@("token-usage-" + (string)context.Variables["jwt-sub"])" variable-name="currentTokenCount" default-value="0" />
+        <set-variable name="newTokenCount" value="@((int.Parse((string)context.Variables["currentTokenCount"]) + int.Parse((string)context.Variables["total-tokens"])).ToString())" />
+        <cache-store-value key="@("token-usage-" + (string)context.Variables["jwt-sub"])" value="@((string)context.Variables["newTokenCount"])" duration="60" />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
