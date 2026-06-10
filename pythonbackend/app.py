@@ -246,6 +246,8 @@ def _extract_annotations(response):
     annotations = []
     seen_files = set()
     doc_urls_from_tools = []
+    # Mapping from doc_N -> filename (built from tool results)
+    doc_id_to_filename = {}
 
     # Debug: log all output item types to understand the response structure
     try:
@@ -254,52 +256,91 @@ def _extract_annotations(response):
     except Exception:
         pass
 
-    # Step 1: Extract doc_url values from tool call results in response.output
+    # Step 1: Extract doc_url values from MCP call results in response.output
     try:
         for output_item in response.output:
             item_type = getattr(output_item, "type", "")
-            logger.debug("Output item type=%s, attrs=%s", item_type,
-                        [a for a in dir(output_item) if not a.startswith("_")])
             
-            # Check for tool/function call outputs that contain KB results
+            # Collect text from the tool output
             output_text = ""
-            if item_type == "function_call_output":
-                output_text = getattr(output_item, "output", "") or ""
-            elif item_type in ("mcp_call_output", "tool_call_output", "mcp_list_tools"):
-                output_text = getattr(output_item, "output", "") or getattr(output_item, "result", "") or ""
             
-            # Also check content parts for text that might contain doc_url
-            if not output_text and hasattr(output_item, "content"):
-                for content_part in getattr(output_item, "content", []) or []:
-                    text = getattr(content_part, "text", "") or ""
-                    if "doc_url" in text:
-                        output_text += text
+            if item_type == "mcp_call":
+                # McpCall object - try various attributes for the result
+                output_text = getattr(output_item, "output", "") or ""
+                if not output_text:
+                    output_text = getattr(output_item, "result", "") or ""
+                if not output_text:
+                    # Try content attribute
+                    content = getattr(output_item, "content", None)
+                    if isinstance(content, str):
+                        output_text = content
+                    elif isinstance(content, list):
+                        for part in content:
+                            if hasattr(part, "text"):
+                                output_text += getattr(part, "text", "") or ""
+                            elif isinstance(part, dict):
+                                output_text += part.get("text", "") or ""
+                # Log what we found for debugging
+                if output_text:
+                    logger.info("mcp_call output length: %d, has doc_url: %s",
+                               len(output_text), "doc_url" in output_text)
+                else:
+                    # Log available attributes to help debug
+                    attrs = [a for a in dir(output_item) if not a.startswith("_")]
+                    logger.info("mcp_call has no output text. Attrs: %s", attrs)
+                    # Try to serialize the object
+                    try:
+                        if hasattr(output_item, "model_dump"):
+                            dumped = output_item.model_dump()
+                            logger.info("mcp_call model_dump keys: %s", list(dumped.keys()))
+                            # Check if any value contains doc_url
+                            for key, val in dumped.items():
+                                if isinstance(val, str) and "doc_url" in val:
+                                    output_text = val
+                                    break
+                                elif isinstance(val, list):
+                                    for item in val:
+                                        item_str = str(item)
+                                        if "doc_url" in item_str:
+                                            output_text = item_str
+                                            break
+                    except Exception:
+                        pass
+
+            elif item_type == "function_call_output":
+                output_text = getattr(output_item, "output", "") or ""
+            elif item_type == "mcp_call_output":
+                output_text = getattr(output_item, "output", "") or getattr(output_item, "result", "") or ""
             
             # Parse doc_url from tool results
             if output_text and "doc_url" in output_text:
                 doc_url_matches = re.findall(r'"doc_url"\s*:\s*"([^"]+)"', output_text)
-                for doc_url in doc_url_matches:
+                for idx, doc_url in enumerate(doc_url_matches):
                     if "root:/" in doc_url:
                         filename = doc_url.split("root:/")[-1]
-                        if filename and filename not in seen_files:
-                            seen_files.add(filename)
-                            url = build_sharepoint_url(doc_url)
-                            doc_urls_from_tools.append({"filename": filename, "url": url})
-                            logger.info("Citation from tool result: %s -> %s", filename, url)
+                        if filename:
+                            # Build mapping: doc_0 -> filename, doc_1 -> filename, etc.
+                            doc_id_to_filename[f"doc_{idx}"] = filename
+                            if filename not in seen_files:
+                                seen_files.add(filename)
+                                url = build_sharepoint_url(doc_url)
+                                doc_urls_from_tools.append({"filename": filename, "url": url})
+                                logger.info("Citation from tool result: %s -> %s", filename, url)
     except Exception as e:
         logger.warning("Error parsing tool call results for citations: %s", e)
 
     if doc_urls_from_tools:
         annotations = doc_urls_from_tools
     else:
-        # Step 2: Try structured annotations on the response content
+        # Step 2: Use annotations + doc_id_to_filename mapping
+        # If we have a mapping from doc_0->filename (from tool results), use it
+        # Otherwise, try to resolve annotations directly
         try:
             for output_item in response.output:
                 if hasattr(output_item, "content"):
                     for content_part in output_item.content:
                         if hasattr(content_part, "annotations"):
                             for ann in content_part.annotations:
-                                # Log what we actually get from annotations
                                 ann_type = getattr(ann, "type", "unknown")
                                 ann_filename = getattr(ann, "filename", None)
                                 ann_url = getattr(ann, "url", None)
@@ -317,14 +358,20 @@ def _extract_annotations(response):
                                     filename = url.split("root:/")[-1] or filename
                                     entry["url"] = build_sharepoint_url(url)
                                 elif url and "search.windows.net" in url:
-                                    # KB endpoint - not a document URL, skip
+                                    # KB endpoint URL — check if title is a doc_N ID we can map
+                                    if ann_title and ann_title in doc_id_to_filename:
+                                        real_filename = doc_id_to_filename[ann_title]
+                                        if real_filename not in seen_files:
+                                            seen_files.add(real_filename)
+                                            entry["filename"] = real_filename
+                                            entry["url"] = build_sharepoint_url(f"root:/{real_filename}")
+                                            annotations.append(entry)
                                     continue
                                 elif url and url.startswith("http"):
                                     entry["url"] = url
 
                                 # Skip internal IDs like doc_0, doc_1
                                 if _is_internal_doc_id(filename):
-                                    logger.debug("Skipping internal doc ID: %s", filename)
                                     continue
 
                                 if filename:
