@@ -229,63 +229,105 @@ def sanitize_markdown(text):
 
 
 def _extract_annotations(response):
-    """Extract file citation annotations from the response to get real source names and URLs."""
+    """Extract document citations from response by parsing tool call results.
+    
+    The Foundry KB tool returns results with doc_url fields like:
+      /drives/b!.../root:/Technology Acceptable Use.pdf
+    These are converted to clickable SharePoint URLs.
+    """
     annotations = []
     seen_files = set()
+    doc_urls_from_tools = []
+
+    # Step 1: Extract doc_url values from tool call results in response.output
     try:
         for output_item in response.output:
-            if hasattr(output_item, "content"):
-                for content_part in output_item.content:
-                    if hasattr(content_part, "annotations"):
-                        for ann in content_part.annotations:
-                            entry = {}
-                            filename = None
-                            if hasattr(ann, "filename") and ann.filename:
-                                filename = ann.filename
-                                entry["filename"] = filename
-                            elif hasattr(ann, "title") and ann.title:
-                                filename = ann.title
-                                entry["filename"] = filename
-                            if hasattr(ann, "file_id"):
-                                entry["file_id"] = ann.file_id
-                            # Try to get URL from annotation directly
-                            if hasattr(ann, "url") and ann.url:
-                                url = ann.url
-                                # If it's a Graph drive path, convert to SharePoint URL
-                                if url.startswith("/drives/") or "root:/" in url:
-                                    entry["url"] = build_sharepoint_url(url)
-                                else:
-                                    entry["url"] = url
-                            elif hasattr(ann, "url_citation") and ann.url_citation:
-                                url = getattr(ann.url_citation, "url", "") or ""
-                                if url.startswith("/drives/") or "root:/" in url:
-                                    entry["url"] = build_sharepoint_url(url)
-                                else:
-                                    entry["url"] = url
-                            # If we have a filename but no URL, build the SharePoint URL from filename
-                            if filename and "url" not in entry:
-                                entry["url"] = build_sharepoint_url(f"root:/{filename}")
-                            if entry and filename not in seen_files:
-                                seen_files.add(filename)
-                                annotations.append(entry)
+            # Look for tool call output items (function_call_output or similar)
+            item_type = getattr(output_item, "type", "")
+            
+            # Check for tool/function call outputs that contain KB results
+            output_text = ""
+            if item_type == "function_call_output":
+                output_text = getattr(output_item, "output", "") or ""
+            elif hasattr(output_item, "content"):
+                # Some formats nest the tool output in content
+                for content_part in getattr(output_item, "content", []) or []:
+                    if hasattr(content_part, "text"):
+                        output_text += getattr(content_part, "text", "") or ""
+            
+            # Parse doc_url from tool results (JSON snippets embedded in the text)
+            if output_text and "doc_url" in output_text:
+                # Extract doc_url values from the tool output
+                doc_url_matches = re.findall(r'"doc_url"\s*:\s*"([^"]+)"', output_text)
+                for doc_url in doc_url_matches:
+                    if "root:/" in doc_url:
+                        filename = doc_url.split("root:/")[-1]
+                        if filename and filename not in seen_files:
+                            seen_files.add(filename)
+                            url = build_sharepoint_url(doc_url)
+                            doc_urls_from_tools.append({"filename": filename, "url": url})
+                            logger.info("Citation from tool result: %s -> %s", filename, url)
     except Exception as e:
-        logger.debug("Error extracting annotations: %s", e)
-    
-    # Also parse citation markers from the response text to extract doc references
-    # Pattern: 【6:0†source】 - these correspond to knowledge base results
-    if not annotations:
+        logger.warning("Error parsing tool call results for citations: %s", e)
+
+    if doc_urls_from_tools:
+        annotations = doc_urls_from_tools
+    else:
+        # Step 2: Try structured annotations on the response content
         try:
-            text = response.output_text or ""
-            # Extract unique citation markers
-            markers = re.findall(r'【[^】]*?†([^】]*?)】', text)
-            for source in markers:
-                if source and source != "source" and source not in seen_files:
-                    seen_files.add(source)
-                    url = build_sharepoint_url(f"root:/{source}")
-                    annotations.append({"filename": source, "url": url})
-        except Exception:
-            pass
-    
+            for output_item in response.output:
+                if hasattr(output_item, "content"):
+                    for content_part in output_item.content:
+                        if hasattr(content_part, "annotations"):
+                            for ann in content_part.annotations:
+                                entry = {}
+                                filename = None
+                                url = getattr(ann, "url", None) or ""
+                                
+                                # Get filename
+                                if hasattr(ann, "filename") and ann.filename:
+                                    filename = ann.filename
+                                elif hasattr(ann, "title") and ann.title:
+                                    filename = ann.title
+
+                                # If URL is a drive path, convert it
+                                if url and "root:/" in url:
+                                    filename = url.split("root:/")[-1] or filename
+                                    entry["url"] = build_sharepoint_url(url)
+                                elif url and "search.windows.net" in url:
+                                    # This is the KB endpoint, not a doc URL - skip it
+                                    pass
+                                elif url and url.startswith("http"):
+                                    entry["url"] = url
+
+                                # Build URL from filename if we have one
+                                if filename and filename.lower() != "source":
+                                    entry["filename"] = filename
+                                    if "url" not in entry:
+                                        entry["url"] = build_sharepoint_url(f"root:/{filename}")
+
+                                dedup_key = entry.get("filename")
+                                if entry and dedup_key and dedup_key not in seen_files:
+                                    seen_files.add(dedup_key)
+                                    annotations.append(entry)
+        except Exception as e:
+            logger.warning("Error extracting structured annotations: %s", e)
+
+        # Step 3: Fallback - parse citation markers from the response text
+        if not annotations:
+            try:
+                text = response.output_text or ""
+                markers = re.findall(r'【[^】]*?†([^】]*?)】', text)
+                for source in markers:
+                    if source and source.lower() != "source" and source not in seen_files:
+                        seen_files.add(source)
+                        url = build_sharepoint_url(f"root:/{source}")
+                        annotations.append({"filename": source, "url": url})
+            except Exception:
+                pass
+
+    logger.info("Total citations extracted: %d | files: %s", len(annotations),
+                [a.get("filename") for a in annotations])
     return annotations
 
 
