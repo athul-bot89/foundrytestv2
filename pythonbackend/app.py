@@ -228,6 +228,14 @@ def sanitize_markdown(text):
     return text
 
 
+def _is_internal_doc_id(name):
+    """Check if a filename is just an internal reference ID like doc_0, doc_1, etc."""
+    if not name:
+        return True
+    # Match patterns like: doc_0, doc_1, source, chunk_3, etc.
+    return bool(re.match(r'^(doc|chunk|source|ref|item)[-_]?\d*$', name.lower()))
+
+
 def _extract_annotations(response):
     """Extract document citations from response by parsing tool call results.
     
@@ -239,25 +247,36 @@ def _extract_annotations(response):
     seen_files = set()
     doc_urls_from_tools = []
 
+    # Debug: log all output item types to understand the response structure
+    try:
+        output_types = [(getattr(item, "type", "unknown"), type(item).__name__) for item in response.output]
+        logger.info("Response output items: %s", output_types)
+    except Exception:
+        pass
+
     # Step 1: Extract doc_url values from tool call results in response.output
     try:
         for output_item in response.output:
-            # Look for tool call output items (function_call_output or similar)
             item_type = getattr(output_item, "type", "")
+            logger.debug("Output item type=%s, attrs=%s", item_type,
+                        [a for a in dir(output_item) if not a.startswith("_")])
             
             # Check for tool/function call outputs that contain KB results
             output_text = ""
             if item_type == "function_call_output":
                 output_text = getattr(output_item, "output", "") or ""
-            elif hasattr(output_item, "content"):
-                # Some formats nest the tool output in content
-                for content_part in getattr(output_item, "content", []) or []:
-                    if hasattr(content_part, "text"):
-                        output_text += getattr(content_part, "text", "") or ""
+            elif item_type in ("mcp_call_output", "tool_call_output", "mcp_list_tools"):
+                output_text = getattr(output_item, "output", "") or getattr(output_item, "result", "") or ""
             
-            # Parse doc_url from tool results (JSON snippets embedded in the text)
+            # Also check content parts for text that might contain doc_url
+            if not output_text and hasattr(output_item, "content"):
+                for content_part in getattr(output_item, "content", []) or []:
+                    text = getattr(content_part, "text", "") or ""
+                    if "doc_url" in text:
+                        output_text += text
+            
+            # Parse doc_url from tool results
             if output_text and "doc_url" in output_text:
-                # Extract doc_url values from the tool output
                 doc_url_matches = re.findall(r'"doc_url"\s*:\s*"([^"]+)"', output_text)
                 for doc_url in doc_url_matches:
                     if "root:/" in doc_url:
@@ -280,28 +299,35 @@ def _extract_annotations(response):
                     for content_part in output_item.content:
                         if hasattr(content_part, "annotations"):
                             for ann in content_part.annotations:
+                                # Log what we actually get from annotations
+                                ann_type = getattr(ann, "type", "unknown")
+                                ann_filename = getattr(ann, "filename", None)
+                                ann_url = getattr(ann, "url", None)
+                                ann_title = getattr(ann, "title", None)
+                                ann_file_id = getattr(ann, "file_id", None)
+                                logger.info("Annotation: type=%s filename=%s url=%s title=%s file_id=%s",
+                                           ann_type, ann_filename, ann_url, ann_title, ann_file_id)
+
                                 entry = {}
-                                filename = None
-                                url = getattr(ann, "url", None) or ""
-                                
-                                # Get filename
-                                if hasattr(ann, "filename") and ann.filename:
-                                    filename = ann.filename
-                                elif hasattr(ann, "title") and ann.title:
-                                    filename = ann.title
+                                filename = ann_filename or ann_title
+                                url = ann_url or ""
 
                                 # If URL is a drive path, convert it
                                 if url and "root:/" in url:
                                     filename = url.split("root:/")[-1] or filename
                                     entry["url"] = build_sharepoint_url(url)
                                 elif url and "search.windows.net" in url:
-                                    # This is the KB endpoint, not a doc URL - skip it
-                                    pass
+                                    # KB endpoint - not a document URL, skip
+                                    continue
                                 elif url and url.startswith("http"):
                                     entry["url"] = url
 
-                                # Build URL from filename if we have one
-                                if filename and filename.lower() != "source":
+                                # Skip internal IDs like doc_0, doc_1
+                                if _is_internal_doc_id(filename):
+                                    logger.debug("Skipping internal doc ID: %s", filename)
+                                    continue
+
+                                if filename:
                                     entry["filename"] = filename
                                     if "url" not in entry:
                                         entry["url"] = build_sharepoint_url(f"root:/{filename}")
@@ -319,7 +345,7 @@ def _extract_annotations(response):
                 text = response.output_text or ""
                 markers = re.findall(r'【[^】]*?†([^】]*?)】', text)
                 for source in markers:
-                    if source and source.lower() != "source" and source not in seen_files:
+                    if source and not _is_internal_doc_id(source) and source not in seen_files:
                         seen_files.add(source)
                         url = build_sharepoint_url(f"root:/{source}")
                         annotations.append({"filename": source, "url": url})
@@ -349,6 +375,7 @@ def chat():
                 {"role": msg["role"], "content": msg["content"]}
                 for msg in messages
             ],
+            include=["file_search_call.results", "message.input_image.image_url"],
             extra_body={
                 "agent_reference": {
                     "name": agent_name,
@@ -427,6 +454,7 @@ def chat_stream():
                     {"role": msg["role"], "content": msg["content"]}
                     for msg in messages
                 ],
+                include=["file_search_call.results", "message.input_image.image_url"],
                 extra_body={
                     "agent_reference": {
                         "name": agent_name,
