@@ -81,6 +81,42 @@ COST_PER_PROMPT_TOKEN = float(os.environ.get("COST_PER_PROMPT_TOKEN", "0.0000025
 COST_PER_COMPLETION_TOKEN = float(os.environ.get("COST_PER_COMPLETION_TOKEN", "0.000010"))
 
 
+# SharePoint citation URL configuration
+SHAREPOINT_LIBRARY_BASE = os.environ.get(
+    "SHAREPOINT_LIBRARY_BASE",
+    "https://pecopalletinc.sharepoint.com/sites/PECOFiles/Company%20Policies"
+)
+SHAREPOINT_SITE_PATH = os.environ.get(
+    "SHAREPOINT_SITE_PATH",
+    "/sites/PECOFiles/Company Policies"
+)
+
+
+def build_sharepoint_url(doc_url: str) -> str:
+    """Convert a Graph API doc_url path to a clickable SharePoint URL.
+    
+    Input:  /drives/b!.../root:/Technology Acceptable Use.pdf
+    Output: https://pecopalletinc.sharepoint.com/sites/PECOFiles/Company%20Policies/Forms/...
+    """
+    if not doc_url:
+        return ""
+    # Extract filename from "root:/filename.pdf"
+    if "root:/" in doc_url:
+        filename = doc_url.split("root:/")[-1]
+    else:
+        filename = doc_url.rsplit("/", 1)[-1]
+    if not filename:
+        return ""
+    # Build the SharePoint URL
+    import urllib.parse
+    file_path = f"{SHAREPOINT_SITE_PATH}/{filename}"
+    params = urllib.parse.urlencode({
+        "id": file_path,
+        "parent": SHAREPOINT_SITE_PATH
+    })
+    return f"{SHAREPOINT_LIBRARY_BASE}/Forms/All%20Documents%20%20Formatted.aspx?{params}"
+
+
 class UserTokenCredential(TokenCredential):
     """Wraps a user's access token to satisfy the TokenCredential interface."""
     def __init__(self, token: str):
@@ -161,6 +197,11 @@ def _get_project_client_for_token(token: str):
     credential = UserTokenCredential(token)
     return AIProjectClient(endpoint=endpoint, credential=credential)
 
+
+def _get_openai_client_for_token(token: str):
+    """Create an OpenAI client via the project client (already routes through APIM)."""
+    return _get_project_client_for_token(token).get_openai_client(max_retries=0)
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
@@ -188,8 +229,9 @@ def sanitize_markdown(text):
 
 
 def _extract_annotations(response):
-    """Extract file citation annotations from the response to get real source names."""
+    """Extract file citation annotations from the response to get real source names and URLs."""
     annotations = []
+    seen_files = set()
     try:
         for output_item in response.output:
             if hasattr(output_item, "content"):
@@ -197,18 +239,53 @@ def _extract_annotations(response):
                     if hasattr(content_part, "annotations"):
                         for ann in content_part.annotations:
                             entry = {}
+                            filename = None
                             if hasattr(ann, "filename") and ann.filename:
-                                entry["filename"] = ann.filename
+                                filename = ann.filename
+                                entry["filename"] = filename
                             elif hasattr(ann, "title") and ann.title:
-                                entry["filename"] = ann.title
+                                filename = ann.title
+                                entry["filename"] = filename
                             if hasattr(ann, "file_id"):
                                 entry["file_id"] = ann.file_id
+                            # Try to get URL from annotation directly
                             if hasattr(ann, "url") and ann.url:
-                                entry["url"] = ann.url
-                            if entry:
+                                url = ann.url
+                                # If it's a Graph drive path, convert to SharePoint URL
+                                if url.startswith("/drives/") or "root:/" in url:
+                                    entry["url"] = build_sharepoint_url(url)
+                                else:
+                                    entry["url"] = url
+                            elif hasattr(ann, "url_citation") and ann.url_citation:
+                                url = getattr(ann.url_citation, "url", "") or ""
+                                if url.startswith("/drives/") or "root:/" in url:
+                                    entry["url"] = build_sharepoint_url(url)
+                                else:
+                                    entry["url"] = url
+                            # If we have a filename but no URL, build the SharePoint URL from filename
+                            if filename and "url" not in entry:
+                                entry["url"] = build_sharepoint_url(f"root:/{filename}")
+                            if entry and filename not in seen_files:
+                                seen_files.add(filename)
                                 annotations.append(entry)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Error extracting annotations: %s", e)
+    
+    # Also parse citation markers from the response text to extract doc references
+    # Pattern: 【6:0†source】 - these correspond to knowledge base results
+    if not annotations:
+        try:
+            text = response.output_text or ""
+            # Extract unique citation markers
+            markers = re.findall(r'【[^】]*?†([^】]*?)】', text)
+            for source in markers:
+                if source and source != "source" and source not in seen_files:
+                    seen_files.add(source)
+                    url = build_sharepoint_url(f"root:/{source}")
+                    annotations.append({"filename": source, "url": url})
+        except Exception:
+            pass
+    
     return annotations
 
 
@@ -223,7 +300,7 @@ def chat():
         if not data or not data.get("messages"):
             return jsonify({"error": "Request body must include 'messages'", "code": "BAD_REQUEST"}), 400
         messages = data.get("messages", [])
-        openai_client = _get_project_client_for_token(token).get_openai_client(max_retries=0)
+        openai_client = _get_openai_client_for_token(token)
 
         response = openai_client.responses.create(
             input=[
@@ -302,7 +379,7 @@ def chat_stream():
 
     def generate():
         try:
-            openai_client = _get_project_client_for_token(token).get_openai_client(max_retries=0)
+            openai_client = _get_openai_client_for_token(token)
             stream = openai_client.responses.create(
                 input=[
                     {"role": msg["role"], "content": msg["content"]}

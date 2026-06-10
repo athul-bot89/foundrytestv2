@@ -5,45 +5,55 @@ import rehypeRaw from "rehype-raw";
 import { streamMessage, sendFeedback } from "./api";
 import "./Chat.css";
 
-// /**
-//  * Parse citation markers like 【4:1†source.pdf】 from the text.
-//  * Returns { cleanText, citations } where citations is an array of
-//  * { index, id, source } objects and cleanText has markers replaced
-//  * with placeholder tokens like [^1].
-//  */
-// function parseCitations(text, annotations = []) {
-//   const citationRegex = /【([^】]*?)†([^】]*?)】/g;
-//   const citations = [];
-//   const seen = new Map();
-//   let lastIdx = null;
-//   let annotationIndex = 0;
-//
-//   const cleanText = text.replace(citationRegex, (match, id, source) => {
-//     const key = id || source;
-//     if (!seen.has(key)) {
-//       seen.set(key, citations.length + 1);
-//       let displayName = source || id;
-//       if (displayName === "source" || !displayName) {
-//         if (annotations[annotationIndex] && annotations[annotationIndex].filename) {
-//           displayName = annotations[annotationIndex].filename;
-//         } else {
-//           displayName = `Source ${citations.length + 1}`;
-//         }
-//       }
-//       citations.push({ index: citations.length + 1, id, source: displayName, url: annotations[annotationIndex]?.url || null });
-//     }
-//     annotationIndex++;
-//     const idx = seen.get(key);
-//     if (idx === lastIdx) return "";
-//     lastIdx = idx;
-//     return `<cite-ref data-idx="${idx}"></cite-ref>`;
-//   });
-//
-//   return { cleanText, citations };
-// }
+/**
+ * Parse citation markers like 【4:1†source.pdf】 from the text.
+ * Returns { cleanText, citations } where citations is an array of
+ * { index, id, source } objects and cleanText has markers replaced
+ * with placeholder tokens like [^1].
+ */
+function parseCitations(text, annotations = []) {
+  const citationRegex = /【([^】]*?)†([^】]*?)】/g;
+  const citations = [];
+  const seen = new Map();
+  let lastIdx = null;
+  let annotationIndex = 0;
+
+  const cleanText = text.replace(citationRegex, (match, id, source) => {
+    const key = id || source;
+    if (!seen.has(key)) {
+      seen.set(key, citations.length + 1);
+      let displayName = source || id;
+      if (displayName === "source" || !displayName) {
+        if (annotations[annotationIndex] && annotations[annotationIndex].filename) {
+          displayName = annotations[annotationIndex].filename;
+        } else {
+          displayName = `Source ${citations.length + 1}`;
+        }
+      }
+      // Find matching annotation URL by filename
+      let url = null;
+      const matchingAnn = annotations.find(
+        (a) => a.filename === displayName || a.filename === source
+      );
+      if (matchingAnn && matchingAnn.url) {
+        url = matchingAnn.url;
+      } else if (annotations[citations.length] && annotations[citations.length].url) {
+        url = annotations[citations.length].url;
+      }
+      citations.push({ index: citations.length + 1, id, source: displayName, url });
+    }
+    annotationIndex++;
+    const idx = seen.get(key);
+    if (idx === lastIdx) return "";
+    lastIdx = idx;
+    return `<cite-ref data-idx="${idx}"></cite-ref>`;
+  });
+
+  return { cleanText, citations };
+}
 
 function MessageContent({ content, role, annotations }) {
-  // const [refsExpanded, setRefsExpanded] = useState(false);
+  const [refsExpanded, setRefsExpanded] = useState(false);
 
   if (role === "user" || role === "error") {
     if (role === "error") return <span className="error-text">{content}</span>;
@@ -61,15 +71,12 @@ function MessageContent({ content, role, annotations }) {
     );
   }
 
-  // const { cleanText, citations } = parseCitations(content, annotations);
-  //
-  // const markdownWithCitations = cleanText.replace(
-  //   /<cite-ref data-idx="(\d+)"><\/cite-ref>/g,
-  //   (_, idx) => `<span class="citation-badge">${idx}</span>`
-  // );
+  const { cleanText, citations } = parseCitations(content, annotations);
 
-  // Strip citation markers like 【6:0†source】 from displayed text
-  const displayContent = content.replace(/【[^】]*?†[^】]*?】/g, "");
+  const markdownWithCitations = cleanText.replace(
+    /<cite-ref data-idx="(\d+)"><\/cite-ref>/g,
+    (_, idx) => `<span class="citation-badge">${idx}</span>`
+  );
 
   return (
     <>
@@ -82,9 +89,8 @@ function MessageContent({ content, role, annotations }) {
           ),
         }}
       >
-        {displayContent}
+        {markdownWithCitations}
       </ReactMarkdown>
-      {/* Citations section - commented out for potential future use
       {citations.length > 0 && (
         <div className="citations-section">
           <button
@@ -140,7 +146,6 @@ function MessageContent({ content, role, annotations }) {
           )}
         </div>
       )}
-      */}
     </>
   );
 }

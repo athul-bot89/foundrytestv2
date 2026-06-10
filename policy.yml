@@ -61,10 +61,35 @@
         <set-variable name="total-tokens" value="@{
             try {
                 var body = (string)context.Variables["response-body"];
-                var json = JObject.Parse(body);
-                var usage = json["usage"];
-                if (usage != null && usage["total_tokens"] != null) {
-                    return usage["total_tokens"].ToString();
+                if (string.IsNullOrEmpty(body)) {
+                    return "0";
+                }
+                // Try parsing as a single JSON object (non-streaming response)
+                if (body.TrimStart().StartsWith("{")) {
+                    var json = JObject.Parse(body);
+                    var usage = json["usage"];
+                    if (usage != null && usage["total_tokens"] != null) {
+                        return usage["total_tokens"].ToString();
+                    }
+                }
+                // Handle SSE streaming response: look for usage data in event lines
+                var lines = body.Split('\n');
+                for (int i = lines.Length - 1; i >= 0; i--) {
+                    var line = lines[i];
+                    if (line.StartsWith("data: ") && line.Contains("total_tokens")) {
+                        var payload = line.Substring(6).Trim();
+                        var evt = JObject.Parse(payload);
+                        // OpenAI responses API: usage is in response.completed event
+                        var resp = evt["response"];
+                        if (resp != null && resp["usage"] != null && resp["usage"]["total_tokens"] != null) {
+                            return resp["usage"]["total_tokens"].ToString();
+                        }
+                        // Direct usage field
+                        var usage = evt["usage"];
+                        if (usage != null && usage["total_tokens"] != null) {
+                            return usage["total_tokens"].ToString();
+                        }
+                    }
                 }
                 return "0";
             } catch {
