@@ -52,7 +52,7 @@ function parseCitations(text, annotations = []) {
   return { cleanText, citations };
 }
 
-function MessageContent({ content, role, annotations }) {
+function MessageContent({ content, role, annotations, showCitations = true }) {
   const [refsExpanded, setRefsExpanded] = useState(false);
 
   if (role === "user" || role === "error") {
@@ -67,6 +67,23 @@ function MessageContent({ content, role, annotations }) {
         }}
       >
         {content}
+      </ReactMarkdown>
+    );
+  }
+
+  if (!showCitations) {
+    // Strip citation markers from text and render plain markdown
+    const strippedText = content.replace(/【([^】]*?)†([^】]*?)】/g, "");
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node, ...props }) => (
+            <a target="_blank" rel="noopener noreferrer" {...props} />
+          ),
+        }}
+      >
+        {strippedText}
       </ReactMarkdown>
     );
   }
@@ -170,7 +187,7 @@ function UserAvatar() {
   );
 }
 
-function Chat({ token, email }) {
+function Chat({ token, email, showCitations = true }) {
   const userId = email;
 
   const [messages, setMessages] = useState([]);
@@ -349,7 +366,7 @@ function Chat({ token, email }) {
             {msg.role === "assistant" && <AgentAvatar />}
             {msg.role === "user" && <div className="avatar-spacer" />}
             <div className={`message-bubble ${msg.role}`}>
-              <MessageContent content={msg.content} role={msg.role} annotations={msg.annotations} />
+              <MessageContent content={msg.content} role={msg.role} annotations={msg.annotations} showCitations={showCitations} />
               {msg.role === "assistant" && (
                 <div className="feedback-buttons">
                   <button
@@ -387,7 +404,7 @@ function Chat({ token, email }) {
           <div className="message-row assistant">
             <AgentAvatar />
             <div className="message-bubble assistant">
-              <MessageContent content={streamingContent} role="assistant" />
+              <MessageContent content={streamingContent} role="assistant" showCitations={showCitations} />
             </div>
             <div className="avatar-spacer" />
           </div>

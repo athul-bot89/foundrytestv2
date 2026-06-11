@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from "react";
+import { Routes, Route } from "react-router-dom";
 import "./App.css";
 
 const Chat = lazy(() => import("./Chat"));
@@ -43,7 +44,10 @@ function App() {
     return (
       <div className="App">
         <Suspense fallback={<div className="auth-loading">Loading chat...</div>}>
-          <Chat token={token} email={email} />
+          <Routes>
+            <Route path="/no-citations" element={<Chat token={token} email={email} showCitations={false} />} />
+            <Route path="*" element={<Chat token={token} email={email} showCitations={true} />} />
+          </Routes>
         </Suspense>
       </div>
     );
