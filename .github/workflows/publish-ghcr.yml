@@ -2,7 +2,7 @@ name: Publish to GHCR
 
 on:
   push:
-    branches: [main, demo-branch]
+    branches: [main, demo-branch,citationsinorout]
 
 env:
   REGISTRY: ghcr.io
