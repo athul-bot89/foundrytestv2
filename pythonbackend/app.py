@@ -252,6 +252,82 @@ def _validate_token(token: str):
         return None
 
 
+# --- Authorized Users Check via Microsoft Graph ---
+_CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET", "")
+
+# Cache: set of allowed user OIDs
+_authorized_users_cache = {"oids": set(), "fetched_at": 0}
+_AUTH_USERS_CACHE_TTL = 300  # 5 minutes
+
+
+def _fetch_authorized_user_oids():
+    """Fetch the set of user OIDs assigned to this app from Microsoft Graph."""
+    now = _time.time()
+    if _authorized_users_cache["oids"] and (now - _authorized_users_cache["fetched_at"]) < _AUTH_USERS_CACHE_TTL:
+        return _authorized_users_cache["oids"]
+
+    if not _TENANT_ID or not _CLIENT_ID or not _CLIENT_SECRET:
+        logger.warning("Missing TENANT_ID/CLIENT_ID/AZURE_CLIENT_SECRET — cannot check authorized users")
+        return None  # None = skip check
+
+    try:
+        # Get app-level token using client credentials
+        token_url = f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
+        token_resp = _requests.post(token_url, data={
+            "client_id": _CLIENT_ID,
+            "client_secret": _CLIENT_SECRET,
+            "scope": "https://graph.microsoft.com/.default",
+            "grant_type": "client_credentials",
+        }, timeout=10)
+        token_resp.raise_for_status()
+        app_token = token_resp.json().get("access_token")
+
+        # Get service principal ID
+        sp_url = f"https://graph.microsoft.com/v1.0/servicePrincipals(appId='{_CLIENT_ID}')"
+        sp_resp = _requests.get(sp_url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
+        sp_resp.raise_for_status()
+        sp_id = sp_resp.json().get("id")
+
+        # Get all app role assignments
+        assignments_url = f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp_id}/appRoleAssignedTo?$select=principalId"
+        assign_resp = _requests.get(assignments_url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
+        assign_resp.raise_for_status()
+
+        oids = set()
+        for item in assign_resp.json().get("value", []):
+            oids.add(item["principalId"])
+
+        _authorized_users_cache["oids"] = oids
+        _authorized_users_cache["fetched_at"] = now
+        logger.info("Refreshed authorized users list: %d users", len(oids))
+        return oids
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch authorized users from Graph: {e}")
+        # Return cached if available
+        if _authorized_users_cache["oids"]:
+            return _authorized_users_cache["oids"]
+        return None  # None = skip check (fail open if Graph is unreachable)
+
+
+def _is_user_authorized(token: str) -> bool:
+    """Check if the user in the token is assigned to this app."""
+    allowed_oids = _fetch_authorized_user_oids()
+    if allowed_oids is None:
+        # Can't check — skip (credentials not configured or Graph unreachable)
+        return True
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+        user_oid = claims.get("oid") or claims.get("sub", "")
+        if user_oid in allowed_oids:
+            return True
+        user_email = claims.get("preferred_username") or claims.get("email") or "unknown"
+        logger.info("User %s (oid=%s) not in authorized users list", user_email, user_oid)
+        return False
+    except Exception:
+        return False
+
+
 def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens, client_ip):
     """Log consumption event to Application Insights."""
     prompt_tok = int(prompt_tokens or 0)
@@ -522,6 +598,8 @@ def chat():
     validation_result = _validate_token(token)
     if validation_result is None:
         return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
+    if not _is_user_authorized(token):
+        return jsonify({"error": "You are not authorized to use this application", "code": "AUTH_FORBIDDEN"}), 403
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
@@ -595,6 +673,8 @@ def chat_stream():
     validation_result = _validate_token(token)
     if validation_result is None:
         return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
+    if not _is_user_authorized(token):
+        return jsonify({"error": "You are not authorized to use this application", "code": "AUTH_FORBIDDEN"}), 403
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
@@ -689,6 +769,8 @@ def feedback():
     validation_result = _validate_token(token)
     if validation_result is None:
         return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
+    if not _is_user_authorized(token):
+        return jsonify({"error": "You are not authorized to use this application", "code": "AUTH_FORBIDDEN"}), 403
     try:
         data = request.get_json()
         if not data or "rating" not in data:

@@ -254,8 +254,14 @@ function Chat({ token, email, showCitations = true }) {
         }
       } else {
         const isAuth = err.code === "AUTH_FAILED" || err.code === "AUTH_MISSING" || err.status === 401;
+        const isForbidden = err.code === "AUTH_FORBIDDEN" || err.code === "AUTH_UNAUTHORIZED";
         const isRateLimit = err.code === "RATE_LIMITED" || err.status === 429;
-        if (isAuth) {
+        if (isForbidden) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "error", content: "You are not authorized to use this application. Please contact your administrator." },
+          ]);
+        } else if (isAuth) {
           setMessages((prev) => [
             ...prev,
             { role: "error", content: "Session expired. Please sign out and sign in again." },
