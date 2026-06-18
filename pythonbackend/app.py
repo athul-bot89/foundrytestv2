@@ -589,6 +589,20 @@ def _extract_annotations(response):
     return annotations
 
 
+@app.route("/api/auth/check", methods=["GET"])
+def auth_check():
+    """Verify the user's token and authorization at sign-in time."""
+    token = _get_bearer_token()
+    if not token:
+        return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
+    validation_result = _validate_token(token)
+    if validation_result is None:
+        return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
+    if not _is_user_authorized(token):
+        return jsonify({"error": "You are not authorized to use this application", "code": "AUTH_FORBIDDEN"}), 403
+    return jsonify({"status": "authorized"}), 200
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     token = _get_bearer_token()

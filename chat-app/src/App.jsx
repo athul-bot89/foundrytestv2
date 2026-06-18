@@ -8,6 +8,7 @@ function App() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [authError, setAuthError] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     function handleMessage(e) {
@@ -15,8 +16,8 @@ function App() {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === "AUTH") {
         setAuthError("");
-        setEmail(e.data.email);
-        setToken(e.data.token);
+        // Verify authorization before granting access
+        verifyAuthorization(e.data.token, e.data.email);
       } else if (e.data?.type === "AUTH_ERROR") {
         setAuthError(e.data.error || "unknown");
       }
@@ -24,6 +25,25 @@ function App() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
+
+  async function verifyAuthorization(tkn, userEmail) {
+    setVerifying(true);
+    try {
+      const res = await fetch("/api/auth/check", {
+        headers: { Authorization: `Bearer ${tkn}` },
+      });
+      if (res.ok) {
+        setEmail(userEmail);
+        setToken(tkn);
+      } else {
+        setAuthError("not_authorized");
+      }
+    } catch {
+      setAuthError("not_authorized");
+    } finally {
+      setVerifying(false);
+    }
+  }
 
   const connect = useCallback(() => {
     const width = 600;
@@ -43,6 +63,23 @@ function App() {
     // Clear MSAL cache so next login is fresh
     localStorage.clear();
   }, []);
+
+  if (verifying) {
+    return (
+      <div className="App">
+        <div className="auth-container">
+          <div className="auth-card">
+            <div className="auth-icon">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="currentColor" opacity="0.3"/>
+              </svg>
+            </div>
+            <h2>Verifying access...</h2>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (token && email) {
     return (
