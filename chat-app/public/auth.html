@@ -103,6 +103,28 @@
             } catch (e) {
                 console.error("Auth error:", e);
 
+                // Check if user is not assigned to the application (AADSTS50105)
+                const isNotAuthorized =
+                    e.errorCode === "access_denied" ||
+                    (e.message && e.message.includes("AADSTS50105")) ||
+                    (e.errorMessage && e.errorMessage.includes("AADSTS50105"));
+
+                if (isNotAuthorized) {
+                    // Notify the opener that the user is not authorized
+                    if (window.opener) {
+                        window.opener.postMessage(
+                            { type: "AUTH_ERROR", error: "not_authorized" },
+                            window.location.origin
+                        );
+                    }
+                    document.querySelector(".auth-status h2").textContent = "Access Denied";
+                    document.querySelector(".auth-status p").textContent =
+                        "You are not authorized to use this application. Please contact your administrator.";
+                    document.querySelector(".spinner").style.display = "none";
+                    setTimeout(() => window.close(), 4000);
+                    return;
+                }
+
                 // On timeout, retry once with a fresh redirect
                 if (e.errorCode === "timed_out") {
                     document.querySelector(".auth-status p").textContent = "Retrying sign-in...";

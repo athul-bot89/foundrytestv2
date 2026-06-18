@@ -143,6 +143,115 @@ def _get_user_email_from_token(token: str) -> str:
         return "unknown"
 
 
+# --- JWT Validation for Authorization ---
+import time as _time
+import requests as _requests
+
+_TENANT_ID = os.environ.get("TENANT_ID", "")
+_CLIENT_ID = os.environ.get("CLIENT_ID", "")
+_JWKS_URI = f"https://login.microsoftonline.com/{_TENANT_ID}/discovery/v2.0/keys"
+_VALID_ISSUERS = [
+    f"https://login.microsoftonline.com/{_TENANT_ID}/v2.0",
+    f"https://sts.windows.net/{_TENANT_ID}/",
+]
+
+# Cache JWKS keys with TTL
+_jwks_cache = {"keys": None, "fetched_at": 0}
+_JWKS_CACHE_TTL = 3600  # 1 hour
+
+
+def _get_signing_keys():
+    """Fetch Azure AD signing keys (cached with TTL)."""
+    now = _time.time()
+    if _jwks_cache["keys"] and (now - _jwks_cache["fetched_at"]) < _JWKS_CACHE_TTL:
+        return _jwks_cache["keys"]
+    try:
+        resp = _requests.get(_JWKS_URI, timeout=10)
+        resp.raise_for_status()
+        keys = resp.json().get("keys", [])
+        _jwks_cache["keys"] = keys
+        _jwks_cache["fetched_at"] = now
+        return keys
+    except Exception as e:
+        logger.warning(f"Failed to fetch JWKS keys: {e}")
+        # Return cached keys if available even if stale
+        if _jwks_cache["keys"]:
+            return _jwks_cache["keys"]
+        return []
+
+
+def _find_rsa_key(token: str):
+    """Find the RSA key matching the token's kid header."""
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+    except jwt.exceptions.DecodeError:
+        return None
+    kid = unverified_header.get("kid")
+    if not kid:
+        return None
+    keys = _get_signing_keys()
+    for key in keys:
+        if key.get("kid") == kid:
+            return key
+    # Key not found — maybe keys rotated. Force refresh once.
+    _jwks_cache["fetched_at"] = 0
+    keys = _get_signing_keys()
+    for key in keys:
+        if key.get("kid") == kid:
+            return key
+    return None
+
+
+def _validate_token(token: str):
+    """Validate JWT token signature, audience, issuer, and expiry.
+    
+    The token is issued for Azure AI (aud=https://ai.azure.com), not for our app.
+    We verify signature + issuer + expiry, and confirm 'azp' or 'appid' matches
+    our CLIENT_ID (proving the token was obtained via our app registration).
+    
+    Returns decoded claims on success, or None on failure.
+    """
+    if not _TENANT_ID or not _CLIENT_ID:
+        # If not configured, skip validation (fallback to upstream Azure validation)
+        logger.warning("TENANT_ID or CLIENT_ID not set — skipping local JWT validation")
+        return True
+
+    rsa_key = _find_rsa_key(token)
+    if not rsa_key:
+        logger.warning("No matching RSA key found for token")
+        return None
+
+    try:
+        from jwt.algorithms import RSAAlgorithm
+        public_key = RSAAlgorithm.from_jwk(rsa_key)
+        claims = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=["https://ai.azure.com", _CLIENT_ID],
+            issuer=_VALID_ISSUERS,
+            options={"verify_exp": True},
+        )
+        # Verify the token was acquired by our app registration
+        authorized_party = claims.get("azp") or claims.get("appid")
+        if authorized_party and authorized_party != _CLIENT_ID:
+            logger.info("Token azp/appid mismatch: got %s, expected %s", authorized_party, _CLIENT_ID)
+            return None
+        return claims
+    except jwt.ExpiredSignatureError:
+        logger.info("Token expired")
+        return None
+    except jwt.InvalidAudienceError:
+        logger.info("Token audience mismatch")
+        return None
+    except jwt.InvalidIssuerError:
+        logger.info("Token issuer mismatch")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.info(f"Token validation failed: {e}")
+        return None
+
+
 def track_consumption(agent_id, thread_id, user_email, completion_tokens, prompt_tokens, client_ip):
     """Log consumption event to Application Insights."""
     prompt_tok = int(prompt_tokens or 0)
@@ -410,6 +519,9 @@ def chat():
     if not token:
         logger.warning("Chat request missing Authorization header")
         return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
+    validation_result = _validate_token(token)
+    if validation_result is None:
+        return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
@@ -480,6 +592,9 @@ def chat_stream():
     if not token:
         logger.warning("Stream request missing Authorization header")
         return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
+    validation_result = _validate_token(token)
+    if validation_result is None:
+        return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
     try:
         data = request.get_json()
         if not data or not data.get("messages"):
@@ -571,6 +686,9 @@ def feedback():
     token = _get_bearer_token()
     if not token:
         return jsonify({"error": "Missing Authorization header", "code": "AUTH_MISSING"}), 401
+    validation_result = _validate_token(token)
+    if validation_result is None:
+        return jsonify({"error": "Unauthorized — invalid or expired token", "code": "AUTH_UNAUTHORIZED"}), 403
     try:
         data = request.get_json()
         if not data or "rating" not in data:

@@ -7,14 +7,18 @@ const Chat = lazy(() => import("./Chat"));
 function App() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     function handleMessage(e) {
       // Validate origin to prevent unauthorized messages
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === "AUTH") {
+        setAuthError("");
         setEmail(e.data.email);
         setToken(e.data.token);
+      } else if (e.data?.type === "AUTH_ERROR") {
+        setAuthError(e.data.error || "unknown");
       }
     }
     window.addEventListener("message", handleMessage);
@@ -49,6 +53,33 @@ function App() {
             <Route path="*" element={<Chat token={token} email={email} showCitations={true} />} />
           </Routes>
         </Suspense>
+      </div>
+    );
+  }
+
+  if (authError === "not_authorized") {
+    return (
+      <div className="App">
+        <div className="auth-container">
+          <div className="auth-card">
+            <div className="auth-icon" style={{ color: "#d32f2f" }}>
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-4V7h2v6h-2z" fill="currentColor"/>
+              </svg>
+            </div>
+            <h2>Access Denied</h2>
+            <p style={{ color: "#666", marginBottom: "16px" }}>
+              You are not authorized to use this application.<br />
+              Please contact your administrator to request access.
+            </p>
+            <button className="start-chat-btn" onClick={() => { setAuthError(""); connect(); }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 4v10h10M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              </svg>
+              Try Again
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
