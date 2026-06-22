@@ -252,114 +252,20 @@ def _validate_token(token: str):
         return None
 
 
-# --- Authorized Users Check via Microsoft Graph ---
-_CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET", "")
-
-# Cache: set of allowed user OIDs (direct + group members)
-_authorized_users_cache = {"oids": set(), "fetched_at": 0}
-_AUTH_USERS_CACHE_TTL = 300  # 5 minutes
-
-
-def _get_graph_token():
-    """Get an app-level token for Microsoft Graph using client credentials."""
-    token_url = f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
-    token_resp = _requests.post(token_url, data={
-        "client_id": _CLIENT_ID,
-        "client_secret": _CLIENT_SECRET,
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
-    }, timeout=10)
-    token_resp.raise_for_status()
-    return token_resp.json().get("access_token")
-
-
-def _get_group_members(group_id, app_token):
-    """Fetch all transitive member OIDs of a group (includes nested groups)."""
-    members = set()
-    url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/transitiveMembers?$select=id"
-    while url:
-        resp = _requests.get(url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
-        if resp.status_code == 403:
-            logger.warning(f"Permission denied reading group {group_id} members. "
-                           "Ensure 'GroupMember.Read.All' API permission is granted.")
-            return members
-        resp.raise_for_status()
-        data = resp.json()
-        for member in data.get("value", []):
-            members.add(member["id"])
-        url = data.get("@odata.nextLink")
-    return members
-
-
-def _fetch_authorized_user_oids():
-    """Fetch the set of user OIDs assigned to this app (direct users + group members)."""
-    now = _time.time()
-    if _authorized_users_cache["oids"] and (now - _authorized_users_cache["fetched_at"]) < _AUTH_USERS_CACHE_TTL:
-        return _authorized_users_cache["oids"]
-
-    if not _TENANT_ID or not _CLIENT_ID or not _CLIENT_SECRET:
-        logger.warning("Missing TENANT_ID/CLIENT_ID/AZURE_CLIENT_SECRET — cannot check authorized users")
-        return None  # None = skip check
-
-    try:
-        app_token = _get_graph_token()
-
-        # Get service principal ID
-        sp_url = f"https://graph.microsoft.com/v1.0/servicePrincipals(appId='{_CLIENT_ID}')"
-        sp_resp = _requests.get(sp_url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
-        sp_resp.raise_for_status()
-        sp_id = sp_resp.json().get("id")
-
-        # Get all app role assignments (includes users and groups)
-        assignments_url = f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp_id}/appRoleAssignedTo?$select=principalId,principalType"
-        assign_resp = _requests.get(assignments_url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
-        assign_resp.raise_for_status()
-
-        oids = set()
-        group_ids = []
-        for item in assign_resp.json().get("value", []):
-            principal_type = item.get("principalType", "").lower()
-            if principal_type == "group":
-                group_ids.append(item["principalId"])
-            else:
-                # User or ServicePrincipal — add directly
-                oids.add(item["principalId"])
-
-        # Resolve group memberships (transitive — includes nested groups)
-        for gid in group_ids:
-            try:
-                members = _get_group_members(gid, app_token)
-                oids.update(members)
-                logger.info(f"Resolved group {gid}: {len(members)} members")
-            except Exception as e:
-                logger.warning(f"Failed to resolve group {gid} members: {e}")
-
-        _authorized_users_cache["oids"] = oids
-        _authorized_users_cache["fetched_at"] = now
-        logger.info("Refreshed authorized users list: %d users (%d groups resolved)", len(oids), len(group_ids))
-        return oids
-
-    except Exception as e:
-        logger.warning(f"Failed to fetch authorized users from Graph: {e}")
-        # Return cached if available
-        if _authorized_users_cache["oids"]:
-            return _authorized_users_cache["oids"]
-        return None  # None = skip check (fail open if Graph is unreachable)
+# --- Authorized Users Check via App Roles in JWT ---
+_REQUIRED_ROLE = os.environ.get("REQUIRED_APP_ROLE", "prim")
 
 
 def _is_user_authorized(token: str) -> bool:
-    """Check if the user in the token is assigned to this app (directly or via group)."""
-    allowed_oids = _fetch_authorized_user_oids()
-    if allowed_oids is None:
-        # Can't check — skip (credentials not configured or Graph unreachable)
-        return True
+    """Check if the user's token contains the required app role."""
     try:
         claims = jwt.decode(token, options={"verify_signature": False})
-        user_oid = claims.get("oid") or claims.get("sub", "")
-        if user_oid in allowed_oids:
-            return True
+        roles = claims.get("roles", [])
         user_email = claims.get("preferred_username") or claims.get("email") or "unknown"
-        logger.info("User %s (oid=%s) not in authorized users list", user_email, user_oid)
+        logger.info("User %s has roles: %s", user_email, roles)
+        if _REQUIRED_ROLE in roles:
+            return True
+        logger.info("User %s missing required role '%s'", user_email, _REQUIRED_ROLE)
         return False
     except Exception:
         return False
