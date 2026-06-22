@@ -274,11 +274,15 @@ def _get_graph_token():
 
 
 def _get_group_members(group_id, app_token):
-    """Fetch all member OIDs of a group (handles pagination)."""
+    """Fetch all transitive member OIDs of a group (includes nested groups)."""
     members = set()
-    url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/members?$select=id"
+    url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/transitiveMembers?$select=id"
     while url:
         resp = _requests.get(url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
+        if resp.status_code == 403:
+            logger.warning(f"Permission denied reading group {group_id} members. "
+                           "Ensure 'GroupMember.Read.All' API permission is granted.")
+            return members
         resp.raise_for_status()
         data = resp.json()
         for member in data.get("value", []):
@@ -321,11 +325,12 @@ def _fetch_authorized_user_oids():
                 # User or ServicePrincipal — add directly
                 oids.add(item["principalId"])
 
-        # Resolve group memberships
+        # Resolve group memberships (transitive — includes nested groups)
         for gid in group_ids:
             try:
                 members = _get_group_members(gid, app_token)
                 oids.update(members)
+                logger.info(f"Resolved group {gid}: {len(members)} members")
             except Exception as e:
                 logger.warning(f"Failed to resolve group {gid} members: {e}")
 
