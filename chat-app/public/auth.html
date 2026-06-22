@@ -104,10 +104,12 @@
                 console.error("Auth error:", e);
 
                 // Check if user is not assigned to the application (AADSTS50105)
+                const errorStr = (e.message || "") + (e.errorMessage || "") + (e.errorCode || "");
                 const isNotAuthorized =
                     e.errorCode === "access_denied" ||
-                    (e.message && e.message.includes("AADSTS50105")) ||
-                    (e.errorMessage && e.errorMessage.includes("AADSTS50105"));
+                    errorStr.includes("AADSTS50105") ||
+                    errorStr.includes("not a direct member") ||
+                    errorStr.includes("assigned");
 
                 if (isNotAuthorized) {
                     // Notify the opener that the user is not authorized
