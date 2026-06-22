@@ -255,13 +255,40 @@ def _validate_token(token: str):
 # --- Authorized Users Check via Microsoft Graph ---
 _CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET", "")
 
-# Cache: set of allowed user OIDs
+# Cache: set of allowed user OIDs (direct + group members)
 _authorized_users_cache = {"oids": set(), "fetched_at": 0}
 _AUTH_USERS_CACHE_TTL = 300  # 5 minutes
 
 
+def _get_graph_token():
+    """Get an app-level token for Microsoft Graph using client credentials."""
+    token_url = f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
+    token_resp = _requests.post(token_url, data={
+        "client_id": _CLIENT_ID,
+        "client_secret": _CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default",
+        "grant_type": "client_credentials",
+    }, timeout=10)
+    token_resp.raise_for_status()
+    return token_resp.json().get("access_token")
+
+
+def _get_group_members(group_id, app_token):
+    """Fetch all member OIDs of a group (handles pagination)."""
+    members = set()
+    url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/members?$select=id"
+    while url:
+        resp = _requests.get(url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        for member in data.get("value", []):
+            members.add(member["id"])
+        url = data.get("@odata.nextLink")
+    return members
+
+
 def _fetch_authorized_user_oids():
-    """Fetch the set of user OIDs assigned to this app from Microsoft Graph."""
+    """Fetch the set of user OIDs assigned to this app (direct users + group members)."""
     now = _time.time()
     if _authorized_users_cache["oids"] and (now - _authorized_users_cache["fetched_at"]) < _AUTH_USERS_CACHE_TTL:
         return _authorized_users_cache["oids"]
@@ -271,16 +298,7 @@ def _fetch_authorized_user_oids():
         return None  # None = skip check
 
     try:
-        # Get app-level token using client credentials
-        token_url = f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token"
-        token_resp = _requests.post(token_url, data={
-            "client_id": _CLIENT_ID,
-            "client_secret": _CLIENT_SECRET,
-            "scope": "https://graph.microsoft.com/.default",
-            "grant_type": "client_credentials",
-        }, timeout=10)
-        token_resp.raise_for_status()
-        app_token = token_resp.json().get("access_token")
+        app_token = _get_graph_token()
 
         # Get service principal ID
         sp_url = f"https://graph.microsoft.com/v1.0/servicePrincipals(appId='{_CLIENT_ID}')"
@@ -288,18 +306,32 @@ def _fetch_authorized_user_oids():
         sp_resp.raise_for_status()
         sp_id = sp_resp.json().get("id")
 
-        # Get all app role assignments
-        assignments_url = f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp_id}/appRoleAssignedTo?$select=principalId"
+        # Get all app role assignments (includes users and groups)
+        assignments_url = f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp_id}/appRoleAssignedTo?$select=principalId,principalType"
         assign_resp = _requests.get(assignments_url, headers={"Authorization": f"Bearer {app_token}"}, timeout=10)
         assign_resp.raise_for_status()
 
         oids = set()
+        group_ids = []
         for item in assign_resp.json().get("value", []):
-            oids.add(item["principalId"])
+            principal_type = item.get("principalType", "").lower()
+            if principal_type == "group":
+                group_ids.append(item["principalId"])
+            else:
+                # User or ServicePrincipal — add directly
+                oids.add(item["principalId"])
+
+        # Resolve group memberships
+        for gid in group_ids:
+            try:
+                members = _get_group_members(gid, app_token)
+                oids.update(members)
+            except Exception as e:
+                logger.warning(f"Failed to resolve group {gid} members: {e}")
 
         _authorized_users_cache["oids"] = oids
         _authorized_users_cache["fetched_at"] = now
-        logger.info("Refreshed authorized users list: %d users", len(oids))
+        logger.info("Refreshed authorized users list: %d users (%d groups resolved)", len(oids), len(group_ids))
         return oids
 
     except Exception as e:
@@ -311,7 +343,7 @@ def _fetch_authorized_user_oids():
 
 
 def _is_user_authorized(token: str) -> bool:
-    """Check if the user in the token is assigned to this app."""
+    """Check if the user in the token is assigned to this app (directly or via group)."""
     allowed_oids = _fetch_authorized_user_oids()
     if allowed_oids is None:
         # Can't check — skip (credentials not configured or Graph unreachable)
