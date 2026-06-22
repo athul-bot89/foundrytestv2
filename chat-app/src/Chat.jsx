@@ -187,7 +187,7 @@ function UserAvatar() {
   );
 }
 
-function Chat({ token, email, showCitations = true }) {
+function Chat({ token, idToken, email, showCitations = true }) {
   const userId = email;
 
   const [messages, setMessages] = useState([]);
@@ -238,7 +238,8 @@ function Chat({ token, email, showCitations = true }) {
         (accumulated) => setStreamingContent(accumulated),
         controller.signal,
         token,
-        threadIdRef.current
+        threadIdRef.current,
+        idToken
       );
       setMessages((prev) => [
         ...prev,
@@ -324,7 +325,7 @@ function Chat({ token, email, showCitations = true }) {
       .map((m) => `${m.role}: ${m.content}`)
       .join("\n");
     try {
-      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "", lastUserMsg, content, conversation);
+      await sendFeedback(messageIndex, rating, content, userId, token, threadIdRef.current, messageId || "", lastUserMsg, content, conversation, idToken);
     } catch (err) {
       console.error("[Feedback] Failed to send:", err.message);
     }

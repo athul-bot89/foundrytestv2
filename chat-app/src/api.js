@@ -39,13 +39,15 @@ export async function sendMessage(messages, userId, accessToken) {
  * @param {AbortSignal} signal - AbortController signal to cancel the stream
  * @returns {Promise<string>} The full accumulated response text
  */
-export async function streamMessage(messages, userId, onDelta, signal, accessToken, threadId) {
+export async function streamMessage(messages, userId, onDelta, signal, accessToken, threadId, idToken) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${accessToken}`,
+  };
+  if (idToken) headers["X-ID-Token"] = idToken;
   const res = await fetch("/api/chat/stream", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
-    },
+    headers,
     body: JSON.stringify({ messages, userId, threadId }),
     signal,
   });
@@ -112,13 +114,15 @@ export async function streamMessage(messages, userId, onDelta, signal, accessTok
  * @param {string} messageId - The backend message ID
  * @returns {Promise<object>}
  */
-export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId, lastUserMsg, lastAgentMsg, conversation) {
+export async function sendFeedback(messageIndex, rating, messageContent, userId, accessToken, threadId, messageId, lastUserMsg, lastAgentMsg, conversation, idToken) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${accessToken}`,
+  };
+  if (idToken) headers["X-ID-Token"] = idToken;
   const res = await fetch("/api/feedback", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`,
-    },
+    headers,
     body: JSON.stringify({ messageIndex, rating, messageContent, userId, threadId, messageId, lastUserMsg, lastAgentMsg, conversation }),
   });
 

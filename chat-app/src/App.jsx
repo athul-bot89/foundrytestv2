@@ -7,6 +7,7 @@ const Chat = lazy(() => import("./Chat"));
 function App() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
+  const [idToken, setIdToken] = useState("");
   const [authError, setAuthError] = useState("");
   const [verifying, setVerifying] = useState(false);
 
@@ -17,7 +18,7 @@ function App() {
       if (e.data?.type === "AUTH") {
         setAuthError("");
         // Verify authorization before granting access
-        verifyAuthorization(e.data.token, e.data.email);
+        verifyAuthorization(e.data.token, e.data.email, e.data.idToken);
       } else if (e.data?.type === "AUTH_ERROR") {
         setAuthError(e.data.error || "unknown");
       }
@@ -26,15 +27,16 @@ function App() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  async function verifyAuthorization(tkn, userEmail) {
+  async function verifyAuthorization(tkn, userEmail, idTkn) {
     setVerifying(true);
     try {
-      const res = await fetch("/api/auth/check", {
-        headers: { Authorization: `Bearer ${tkn}` },
-      });
+      const headers = { Authorization: `Bearer ${tkn}` };
+      if (idTkn) headers["X-ID-Token"] = idTkn;
+      const res = await fetch("/api/auth/check", { headers });
       if (res.ok) {
         setEmail(userEmail);
         setToken(tkn);
+        setIdToken(idTkn || "");
       } else {
         setAuthError("not_authorized");
       }
@@ -86,8 +88,8 @@ function App() {
       <div className="App">
         <Suspense fallback={<div className="auth-loading">Loading chat...</div>}>
           <Routes>
-            <Route path="/no-citations" element={<Chat token={token} email={email} showCitations={false} />} />
-            <Route path="*" element={<Chat token={token} email={email} showCitations={true} />} />
+            <Route path="/no-citations" element={<Chat token={token} idToken={idToken} email={email} showCitations={false} />} />
+            <Route path="*" element={<Chat token={token} idToken={idToken} email={email} showCitations={true} />} />
           </Routes>
         </Suspense>
       </div>

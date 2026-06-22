@@ -257,12 +257,22 @@ _REQUIRED_ROLE = os.environ.get("REQUIRED_APP_ROLE", "prim")
 
 
 def _is_user_authorized(token: str) -> bool:
-    """Check if the user's token contains the required app role."""
+    """Check if the user's ID token (or access token) contains the required app role.
+    
+    The ID token (aud=clientId) carries app roles assigned via the Enterprise App.
+    The access token (aud=https://ai.azure.com) typically does NOT contain our app roles.
+    Frontend sends the ID token in the X-ID-Token header.
+    """
+    # Prefer the ID token for role checks (it has aud=our_client_id and contains app roles)
+    id_token = request.headers.get("X-ID-Token", "")
+    token_to_check = id_token if id_token else token
+
     try:
-        claims = jwt.decode(token, options={"verify_signature": False})
+        claims = jwt.decode(token_to_check, options={"verify_signature": False})
         roles = claims.get("roles", [])
         user_email = claims.get("preferred_username") or claims.get("email") or "unknown"
-        logger.info("User %s has roles: %s", user_email, roles)
+        logger.info("User %s has roles: %s (from %s)", user_email, roles,
+                    "id_token" if id_token else "access_token")
         if _REQUIRED_ROLE in roles:
             return True
         logger.info("User %s missing required role '%s'", user_email, _REQUIRED_ROLE)
